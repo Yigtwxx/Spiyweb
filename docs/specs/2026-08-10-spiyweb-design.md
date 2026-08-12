@@ -349,6 +349,10 @@ assumption. `top-k` is a surprisingly strong baseline.
 | D31 | Packaging | **`src/spiyweb/` layout**; `eval/` renamed **`evaluation/`**; `ui/` as optional extra **`spiyweb[ui]`** |
 | D32 | Thermal reset | **Hybrid** — caller-controlled `reset()` by default, optional topic-change auto-detection behind a config flag |
 | D33 | Platforms | **macOS + Windows + Linux**; no OS-specific paths or calls; device order CUDA → MPS → CPU |
+| D34 | Negative knowledge | Negated propositions become permanently **negative-polarity atoms** that absorb the energy of queries asserting the opposite and emit a "corpus disputes this" warning. Schema (`polarity`) and config flag designed now; implemented as an ablation **after** the first Phase 1 measurement |
+| D35 | Explained abstention | On low confidence, `retrieve()` returns a **template-built, LLM-free structural refusal report**: activated entity clusters, the missing bridge, where energy died, what kind of source is missing. Phase 1 scope — a thin layer over confidence + gap machinery |
+| D36 | Supersession vs contradiction | NLI contradiction + ordered timestamps on the same subject = **update, not conflict**: older atom damped, newer marked current, no user question. Requires NLI evidence, never mere recency. Implementation in Phase 2. (Honest note: temporal RAG is an active field — T-GRAG, Temporal Validity et al.; the differentiation is the integration into the energy web, not the problem itself) |
+| D37 | Corpus lint | Offline, retrieval-independent **KB health inspection**: orphan clusters, overloaded hubs, contradiction map, duplicate density. Official Phase 2 product candidate and the project's plan B if multi-hop gains prove marginal |
 
 ### 8.2 Remaining open questions
 
@@ -370,6 +374,9 @@ Only items that cannot be settled before code exists:
    scored as relevant.
 10. **Learned-layer forgetting coefficient** value.
 11. **NLI model choice and candidate-pair threshold** for D26.
+12. **Negated-proposition (polarity) detection method** for D34 — inside the
+    NLI pipeline or a separate polarity classifier? Must be settled after the
+    first Phase 1 measurement, before the ablation is implemented.
 
 Closed since the first draft: thermal-memory reset on topic change → **D32**.
 
