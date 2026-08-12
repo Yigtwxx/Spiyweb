@@ -69,6 +69,8 @@ knobs. Full rationale for each lives in `memory/`.
 | Contradiction surfacing | The library emits a **template-built, LLM-free question with options** for the user |
 | No answer given | **Both sides enter the context, flagged as disputed.** Never silently pick a winner |
 | Negative requests | "excluding X", "without Y" → **energy-absorbing negative seed**, not a post-filter |
+| Negative knowledge | Negated propositions ("X does not…") become permanently **negative-polarity atoms**: they absorb the energy of queries asserting the opposite and emit a "corpus disputes this" warning. Designed now (schema `polarity` field + config flag); implemented as an ablation **after** the first Phase 1 measurement |
+| Supersession | NLI contradiction + ordered timestamps on the same subject = **update, not conflict** — older atom damped, newer marked current, no user question emitted. Freshness tie-break stays separate: supersession requires NLI evidence, not mere recency. Implementation in Phase 2 |
 
 ### 2.4 Query shaping
 
@@ -88,6 +90,9 @@ knobs. Full rationale for each lives in `memory/`.
 - **theme clusters** — "these are separate themes, they intersect here"
 - **confidence score** — total activated energy, activated node count and reached hop depth; the caller decides what counts as "I don't know"
 - **corpus gap warnings** — two dense clusters with no bridge between them
+- **structural refusal report** — when confidence is low, a template-built,
+  LLM-free explanation of *why*: which entity clusters activated, where the
+  missing bridge is, where the energy died, what kind of source is missing
 - **contradiction records** plus the ready-made user question
 
 ### 2.6 Worked example (the canonical trace)
@@ -203,7 +208,7 @@ Because the repo is public from day one, `CLAUDE.local.md` must stay in
 | Phase | Contents | Gate to leave it |
 |---|---|---|
 | **1. Simple working version** | Graph, propagation, dedup, conflicts, eval harness, dev UI | Beat both baselines on MuSiQue by a meaningful margin |
-| **2. Browser face (UI)** | Real UI on top of a stable public API — which means the library work happens here whether or not it is called a library | Real external demand |
+| **2. Browser face (UI)** | Real UI on top of a stable public API — which means the library work happens here whether or not it is called a library. Also lands here: **supersession handling** and the **corpus-lint diagnostic mode** (orphan clusters, overloaded hubs, contradiction map, duplicate density) — the project's plan B if the multi-hop gain proves marginal | Real external demand |
 | **3. Framework / ecosystem** | Ingestion, LLM calls, orchestration; distributable as a skill | — |
 
 The order above is a **tentative revision** from the owner and may change. Two
