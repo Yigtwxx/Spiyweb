@@ -118,6 +118,11 @@ HOP 3   F distributes 1.73 * .60 = 1.04   -> below threshold, web stops
 RESULT  A 5.60 | C 4.40 | D 2.88 | B 2.24 | F 1.73     (+ idea A: 2 votes)
 ```
 
+The ledger rounds hop 0 to two decimals and carries that rounding downwards;
+the unrounded values are `A 5.625 | C 4.375 | D 2.875 | B 2.25 | F 1.725`, and
+those are what `tests/test_propagate.py` pins. The ordering is identical, which
+is the part that matters.
+
 `D` is never the single most similar node to `Q`, yet it ranks third. **That gap
 is the entire value proposition of this project.** Any change that destroys it
 is a regression, whatever the benchmark says.

@@ -1,0 +1,51 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "spiyweb"
+version = "0.0.1"
+description = "Graph-based retrieval for RAG: the query is injected as an energy seed and spreads outward with decay."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [{ name = "Yigit Erdogan", email = "yigiterdogan023@gmail.com" }]
+keywords = ["rag", "retrieval", "graph", "spreading-activation", "personalized-pagerank"]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+# The propagation core is pure Python on purpose: `core/` must stay free of I/O
+# and heavy dependencies. Embeddings, FAISS and the NLI edge builder arrive in
+# their own layers, never here.
+dependencies = []
+
+[project.optional-dependencies]
+# Developer inspection tool, never a package dependency: pip install spiyweb[ui]
+ui = ["streamlit>=1.36"]
+
+[project.urls]
+Homepage = "https://github.com/Yigtwxx/spiyweb"
+Source = "https://github.com/Yigtwxx/spiyweb"
+
+[dependency-groups]
+dev = ["pytest>=8.0", "ruff>=0.6"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/spiyweb"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "ANN", "RUF"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

@@ -30,8 +30,10 @@ görünmeli.
 
 **4. Emniyet freni değerleri.**
 Durma göreli enerji eşiğiyle ([[stopping-and-freshness]]); `max_nodes` ve
-`max_hop` üst sınırları taşma koruması olarak gerekli ama değerleri henüz
-belirlenmedi. İlk ölçümlerden sonra netleşecek.
+`max_hop` üst sınırları taşma koruması olarak gerekli. Kodda **geçici
+varsayılan** olarak `max_hop = 6`, `max_nodes = 512` seçildi (bir değer yazmak
+zorunluydu); gerçek değerler ilk ölçümlerden sonra netleşecek. Fren devreye
+girdiğinde sonuç `stop_reason` alanında görünür — sessiz kırpma yok.
 
 **5. Node veri modeli.**
 Doküman bazlı oy için kaynak ID, tazelik eşitlik bozucusu için timestamp,

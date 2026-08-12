@@ -43,7 +43,7 @@ tek bir gerçek içerir.
 
 ## Durum
 
-- [Proje durumu ve başlama kuralı](project-status.md) — tasarım bitti; "projeye başlayalım" denmeden kod yazılmayacak
+- [Proje durumu](project-status.md) — tasarım bitti, uygulama başladı; adım 1 (yayılma çekirdeği + kanonik iz testi + CI) tamam
 
 ## Uyarılar ve bekleyenler
 
