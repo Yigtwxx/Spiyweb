@@ -58,6 +58,11 @@ Zorunlu ([[learned-layer-hebbian]]) ama değeri seçilmedi.
 **11. NLI model seçimi ve aday çifti eşiği.**
 [[contradiction-detection]] kararının uygulama detayları.
 
+**12. Negatif önerme (polarite) tespit yöntemi.**
+[[negative-knowledge-atoms]] için: olumsuz önermeler NLI hattında mı, ayrı bir
+polarite sınıflandırıcısıyla mı tespit edilecek? Faz 1 ölçümünden sonra,
+ablation uygulamasından önce netleşmeli.
+
 ## Kapanan başlıklar
 
 **2026-08-12 oturumunda kapananlar:** çelişki tespiti → index anında NLI
