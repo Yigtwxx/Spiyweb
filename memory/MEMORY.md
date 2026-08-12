@@ -27,6 +27,10 @@ tek bir gerçek içerir.
 - [Çıktı sözleşmesi](output-contract.md) — yollar LLM'e açıklama olarak gider, sonuçlar temaya göre gruplanır
 - [Çelişki yönetimi](contradiction-handling.md) — negatif yük + kullanıcıya seçenekli soru
 - [Çelişki tespiti](contradiction-detection.md) — index anında çok-dilli NLI, `edges/` içinde; core yalnız işaretli veriyi işler
+- [Negatif bilgi atomları](negative-knowledge-atoms.md) — olumsuz önermeler negatif kutuplu atom; en güçlü özgünlük adayı (D34)
+- [Açıklamalı red](explained-abstention.md) — LLM'siz yapısal "neden bilmiyorum" raporu; Faz 1 (D35)
+- [Süpersesyon vs çelişki](supersession-vs-contradiction.md) — timestamp sıralıysa güncelleme, çatışma değil; Faz 2 (D36)
+- [Corpus lint](corpus-lint.md) — graf-topoloji seviyesinde KB sağlık teftişi; Faz 2 ürün adayı ve B planı (D37)
 - [Sorgu profilleri ve negatif tohum](query-profiles-and-negative-seeds.md) — precise/explore/compare, ve "X hariç"
 
 ## Süreç ve kapsam
