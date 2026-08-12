@@ -14,6 +14,11 @@ işlendi (D26-D33, spec §8.1b): NLI ile çelişki tespiti, göreli eşik (%15),
 3 işletim sistemi desteği. Bayat dosyalar düzeltildi. README / LICENSE /
 CONTRIBUTING eklendi ve repo GitHub'a açıldı. **Başlama kuralı aynen geçerli.**
 
+Aynı gün, özgünlük oturumu: 4 yeni karar (D34-D37) — [[negative-knowledge-atoms]]
+(tasarım şimdi, uygulama Faz 1 ölçümü sonrası ablation),
+[[explained-abstention]] (Faz 1), [[supersession-vs-contradiction]] (Faz 2),
+[[corpus-lint]] (Faz 2 ürün adayı / B planı).
+
 Tüm tasarım kararları alındı ve yazıya geçirildi:
 - 9 çekirdek karar (D1-D9) + 16 genişletilmiş karar (D10-D25) → `CLAUDE.md` §2 ve
   `docs/specs/2026-08-10-spiyweb-design.md`
