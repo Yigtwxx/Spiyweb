@@ -1,0 +1,36 @@
+---
+name: phase1-settings
+description: 1. fazın teknik ayarları — hedef karışımı, benchmark, modeller, ortam ve ölçüm metrikleri, hepsi karara bağlandı
+metadata:
+  type: project
+---
+
+Tek tek sorulup karara bağlandı. Hiçbiri geri dönülemez değil; hepsi `config.py`
+ya da ortam seviyesinde yaşıyor.
+
+| Başlık | Karar | Not |
+|---|---|---|
+| Birincil hedef | **%65 multi-hop doğruluk + %35 serendipity** | Tek bir ağırlıklı hedef fonksiyonu; ikisi de ölçülüyor |
+| Serendipity ölçümü | **Novelty@k** | Ağın getirdiği ama `top-k`'nın hiç getirmediği, yine de ilgili çıkan düğümlerin oranı. Otomatik, ek etiketleme gerektirmez |
+| Ek metrik | **Köprü düğüm recall'ü** | Cevabın gerektirdiği ara doküman ağda kaçıncı sırada? Standart `recall@k` bunu ödüllendirmiyor — iddianın ölçüldüğü tek metrik bu |
+| Benchmark | **MuSiQue** | Kasten çok-hop; "cevap zaten tek chunk'ta" sızıntısı en az olan set |
+| Baseline | **`top-k` + iteratif retrieval** | Gerçek rakip iteratif retrieval; sadece `top-k`'yı geçmek ikna edici değil. **Kapı: ikisini de anlamlı farkla geçmek** |
+| Referans kıyas | **HippoRAG** (rapor amaçlı) | Kapı kriteri değil; "graph-RAG'lerden farkın ne" sorusuna tablo cevabı (2026-08-12) |
+| LLM sağlayıcı | **Lokal-öncelikli (Ollama)** + opsiyonel ücretsiz API'ler (Gemini, OpenRouter, Groq) | Soyutlama `core/` dışında (`llm.py`), config'ten seçilir; secret'lar ortam değişkeninden (2026-08-12) |
+| Durma eşiği | **Göreli — enjekte enerjinin %15'i** | 10.0 seed'de 1.5'e denk; [[stopping-and-freshness]] (2026-08-12) |
+| Platform | **macOS + Windows + Linux** | Device sırası CUDA → MPS → CPU; OS'e özgü path/çağrı yok (2026-08-12) |
+| Paketleme | **`src/spiyweb/` layout**; `eval/` → `evaluation/`; `ui/` opsiyonel extra `spiyweb[ui]` | Public'e çıkmadan alınan yerleşim kararları — sonradan değiştirmek pahalı (2026-08-12) |
+| Varlık çıkarımı | **spaCy + LLM hibrit** | Çoğunluk spaCy ile, belirsiz durumlar LLM'e. İki yolu da bakımda tutmak gerekiyor |
+| Embedding | **multilingual-e5-large** | Türkçe dahil 100 dil destekliyor; hem benchmark hem kendi dokümanların için çalışır |
+| Vektör deposu | **numpy + FAISS** | Sunucusuz, tek dosya. Qdrant/pgvector 2. fazın adaptör konusu |
+| Katman ağırlıkları | **Elle başla** (`semantic .5 / entity 1.0 / structural .3`), sonra küçük grid search | UI'da görerek ayarlanacak |
+| Seed genişliği | **5 atom** | UI'da kaydırıcı olacak |
+| Tekrar eşiği | **Uyarlanabilir** | Aktif düğümlerin benzerlik dağılımından hesaplanır. Sabit eşikten sağlam ama hata ayıklaması zor — UI'da hesaplanan eşik görünmeli |
+| Ortam | **Python 3.11 + uv** | |
+| Repo / lisans | **Baştan public + Apache-2.0** | Açık geliştirme; olgunlaşmamış fikrin erken yargılanması kabul edildi |
+
+**Public repo kararının pratik sonucu:** `CLAUDE.local.md` ilk günden itibaren
+`.gitignore`'da olmalı ve orada kalmalı. Kişisel gerekçeler ve henüz
+netleşmemiş fikirler dışarı sızmasın.
+
+İlgili: [[open-questions]], [[roadmap-and-gates]].
