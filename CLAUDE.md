@@ -148,7 +148,10 @@ src/spiyweb/
 ├── nodes/
 │   ├── chunks.py         # chunk-level nodes
 │   └── propositions.py   # proposition-level nodes (LLM extraction at index time)
+├── entities.py           # hybrid entity extraction: spaCy bulk, LLM for ambiguous chunks
+├── embedding.py          # e5 wrapper: role prefixes baked in, device CUDA -> MPS -> CPU
 ├── llm.py                # LLM provider abstraction: Ollama default, free APIs optional
+├── prompts.py            # prompt templates, kept apart from pipeline logic
 ├── profiles.py           # precise / explore / compare propagation profiles
 ├── config.py             # dataclass: damping, threshold, max_hop, max_nodes, weights
 ├── store.py              # numpy + FAISS single-file vector store (outside core/)
