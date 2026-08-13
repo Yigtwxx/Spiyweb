@@ -33,4 +33,13 @@ ya da ortam seviyesinde yaşıyor.
 `.gitignore`'da olmalı ve orada kalmalı. Kişisel gerekçeler ve henüz
 netleşmemiş fikirler dışarı sızmasın.
 
+**Ağır bağımlılıkların paketlenmesi (adım 4-5, sahibi seçti):** granüler
+extras — `spiyweb[store]` = numpy+faiss-cpu, `[embed]` = sentence-transformers,
+`[entity]` = spacy, `[index]` = üçünün birleşimi; **`dependencies = []`
+değişmedi** (çekirdek saflığının paketleme yüzü). CI `--extra store --extra
+entity` kurar: FAISS gerçek test edilir, spaCy import yolu ucuza kapsanır;
+torch CI dışında — embedding glue'su sahte encoder'la test ediliyor, cihaz
+çözümü (`resolve_device`) saf fonksiyon. spaCy modeli (`xx_ent_wiki_sm`)
+PyPI paketi değil, `python -m spacy download` manuel adımdır.
+
 İlgili: [[open-questions]], [[roadmap-and-gates]].
