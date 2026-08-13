@@ -32,3 +32,17 @@ gerektirmemeli ([[architecture-boundaries]]).
 
 Başlangıç ağırlıkları belirlendi: `semantic .5 / entity 1.0 / structural .3`,
 sonrasında küçük bir grid search — [[phase1-settings]].
+
+**Katman-içi kural (adım 3):** structural katmanın üç ilişkisi iç içedir
+(komşu ⊂ aynı bölüm ⊂ aynı doküman) — bağımsız kanıt değiller, o yüzden çift
+başına **en güçlü etkin ilişki kazanır (max), toplanmaz**. Katmanlar ARASI
+birleştirme ise toplamalı kalır (`from_layers`, additive evidence).
+
+**Entity ağırlık kuralı (adım 4, sahibi seçti):** ortak varlık `e` başına
+katkı **`1/df(e)`** (df = o varlığı anan chunk sayısı); çift ağırlığı =
+katkıların **toplamı** — iki farklı ortak varlık bağımsız kanıttır, structural
+ilişkilerin aksine toplanır. Nadir varlık (df=2) güçlü bağ, her yerde geçen
+varlık neredeyse hiç. Ortak varlık yoksa çift hiç üretilmez.
+`max_df_ratio` (varsayılan 0.5) buna ek clique frenidir: 1/df stopword'ün
+ağırlığını sınırlar ama ürettiği kenar sayısını sınırlamaz. Kurucu saf —
+çıkarım (spaCy + LLM hibrit) `entities.py`'de, `edges/` paketinin dışında.
