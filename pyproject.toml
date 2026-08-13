@@ -27,6 +27,12 @@ dependencies = []
 [project.optional-dependencies]
 # Developer inspection tool, never a package dependency: pip install spiyweb[ui]
 ui = ["streamlit>=1.36"]
+# Heavy index-time dependencies stay granular on purpose: `dependencies = []`
+# is the packaging-level face of the core-purity rule. `index` is the union.
+store = ["numpy>=1.26", "faiss-cpu>=1.8"]
+embed = ["sentence-transformers>=3.0"]
+entity = ["spacy>=3.7"]
+index = ["spiyweb[store]", "spiyweb[embed]", "spiyweb[entity]"]
 
 [project.urls]
 Homepage = "https://github.com/Yigtwxx/spiyweb"
