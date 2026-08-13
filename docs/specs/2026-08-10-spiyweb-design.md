@@ -365,20 +365,21 @@ Only items that cannot be settled before code exists:
 3. **Adaptive duplicate threshold formula.** Percentile-based or deviation-based
    is undecided. The computed value must surface in the UI either way.
 4. **Safety cap values** for `max_nodes` and `max_hop`.
-5. **Node data model.** Source ID (per-document votes), timestamp (freshness
-   tie-break), layer tag, cluster ID — no schema exists yet.
-6. **Chunk size** (300–500 tokens mentioned in passing, never decided).
-7. **Per-profile parameter values** for `precise` / `explore` / `compare`.
-8. **Node mass formula** beyond "proportional to length".
-9. **Novelty@k relevance judgement** — how a node `top-k` never returns is
+5. **Chunk size** (300–500 tokens mentioned in passing, never decided).
+6. **Per-profile parameter values** for `precise` / `explore` / `compare`.
+7. **Node mass formula** beyond "proportional to length".
+8. **Novelty@k relevance judgement** — how a node `top-k` never returns is
    scored as relevant.
-10. **Learned-layer forgetting coefficient** value.
-11. **NLI model choice and candidate-pair threshold** for D26.
-12. **Negated-proposition (polarity) detection method** for D34 — inside the
+9. **Learned-layer forgetting coefficient** value.
+10. **NLI model choice and candidate-pair threshold** for D26.
+11. **Negated-proposition (polarity) detection method** for D34 — inside the
     NLI pipeline or a separate polarity classifier? Must be settled after the
     first Phase 1 measurement, before the ablation is implemented.
 
-Closed since the first draft: thermal-memory reset on topic change → **D32**.
+Closed since the first draft: thermal-memory reset on topic change → **D32**;
+node data model → `Node` schema in `core/graph.py` (id, chunk/proposition
+layer, source ID, length, UTC-epoch timestamp, cluster ID, D34 `polarity`),
+implemented in step 2 together with `LayerWeights` and multi-layer merging.
 
 ---
 

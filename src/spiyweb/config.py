@@ -7,7 +7,47 @@ this object and every mechanism stays individually switchable for ablation.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
+from typing import Literal
+
+EdgeLayer = Literal["semantic", "entity", "structural", "learned"]
+"""The four edge layers of the hybrid graph; layer choices live here, not in core."""
+
+
+@dataclass(frozen=True)
+class LayerWeights:
+    """Relative strength of each edge layer when merging into one adjacency.
+
+    These are THE home of the Phase 1 hand weights - no other module may
+    restate them. A weight of `0.0` disables the layer entirely: its edges and
+    any nodes only it mentions never enter the merged graph, which is what
+    keeps every layer individually switchable for ablation.
+
+    Attributes:
+        semantic: Cosine-similarity edges; seed contact and fallback only.
+            Hopping along paraphrases returns repetition, not new information.
+        entity: Shared entity / concept edges - the main hop fuel.
+        structural: Same document, same section, adjacent chunk.
+        learned: Hebbian usage-reinforced edges. Disabled by default in
+            Phase 1; the layer must never mutate the base graph.
+    """
+
+    semantic: float = 0.5
+    entity: float = 1.0
+    structural: float = 0.3
+    learned: float = 0.0
+
+    def __post_init__(self) -> None:
+        for spec in fields(self):
+            value = getattr(self, spec.name)
+            if value < 0.0:
+                raise ValueError(
+                    f"layer weight {spec.name}={value!r} must not be negative"
+                )
+
+    def weight_of(self, layer: EdgeLayer) -> float:
+        """Weight of `layer`; field names and layer names coincide by design."""
+        return float(getattr(self, layer))
 
 
 @dataclass(frozen=True)

@@ -1,6 +1,6 @@
 ---
 name: project-status
-description: Tasarım bitti; uygulama başladı — ilk adım (yayılma çekirdeği + kanonik iz testi + 3-OS CI) tamamlandı
+description: Tasarım bitti; uygulama sürüyor — adım 1 (yayılma çekirdeği + CI) ve adım 2 (düğüm/kenar veri modeli + katman birleştirme) tamamlandı
 metadata:
   type: project
 ---
@@ -33,8 +33,32 @@ anlamlı dikey dilim seçildi: **saf çekirdek + kanonik izin regresyon testi**.
 Çekirdeğin **sıfır çalışma zamanı bağımlılığı** var — `core/` saflığı kuralı
 paketleme seviyesinde de uygulandı.
 
-**Sıradaki:** düğüm/kenar veri modeli (kaynak ID, timestamp, katman, cluster ID)
-→ kenar kurucular → gömme + FAISS deposu → eval harness + `top-k` baseline.
+## Uygulama adım 2 (tamamlandı, 2026-08-13)
+
+Düğüm/kenar veri modeli — açık soru #5 kapandı:
+
+- `core/graph.py` — `Node` şeması: `id`, `layer` (chunk/proposition),
+  `source_id` (doküman bazlı oy), `length` (kütle formülünün ham girdisi;
+  kütle henüz propagate'e **bağlı değil**), `timestamp` (UTC epoch float,
+  yalnız eşitlik bozucu), `cluster_id`, D34 `polarity` (+1/−1). Graf artık
+  opsiyonel `node_data` registry taşıyor (`nodes` property'siyle ad çakışmasın
+  diye bu ad); kısmi metadata serbest, yinelenen id reddediliyor.
+- `config.py` — `EdgeLayer` + `LayerWeights` (semantic .5 / entity 1.0 /
+  structural .3 / learned **0.0 = kapalı**; ağırlık 0.0 katmanın ablation
+  anahtarı). Faz 1 el ağırlıklarının tek evi burası.
+- `Graph.from_layers` — katman başına kenar listelerini **ağırlıklı toplamla**
+  tek komşuluğa birleştirir (ortalama değil — iki katmanın onayladığı kenar
+  güçlenir, additive evidence). `from_edges` gövdesi `_build_adjacency`'ye
+  çıkarıldı; negatif ret, undirected aynalama ve bastırılmış-kenar (0.0)
+  sözleşmesi birleştirmeye miras. Katman ağırlığı 0.0 → kenarlar VE yalnız o
+  katmanın andığı düğümler grafa hiç girmez.
+- 28 yeni test (`test_node.py`, `test_layers.py`) — toplam 53; en kritiği:
+  `from_layers` ≡ önceden birleştirilmiş `from_edges` altında `propagate`
+  birebir aynı sıralamayı veriyor (birleştirme çekirdeğe görünmez ön-işlem).
+  Kanonik §2.6 izi dokunulmadan yeşil.
+
+**Sıradaki:** kenar kurucular (`edges/` — önce structural + semantic, sonra
+entity) → gömme + FAISS deposu → eval harness + `top-k` baseline.
 Dedup, renkli çok tohum ve çelişki yönetimi baseline karşılaştırmasından sonra.
 
 Güncelleme (2026-08-12): gap analizi yapıldı; 8 karar kapandı ve dokümanlara

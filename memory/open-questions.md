@@ -1,6 +1,6 @@
 ---
 name: open-questions
-description: Kalan açık sorular — 2026-08-12 gap analiziyle güncellendi; termal reset kapandı, veri modeli ve parametre değerleri gibi yeni başlıklar eklendi
+description: Kalan açık sorular — 2026-08-13 güncellemesi; node veri modeli kapandı (adım 2), 11 başlık açık
 metadata:
   type: project
 ---
@@ -35,37 +35,42 @@ varsayılan** olarak `max_hop = 6`, `max_nodes = 512` seçildi (bir değer yazma
 zorunluydu); gerçek değerler ilk ölçümlerden sonra netleşecek. Fren devreye
 girdiğinde sonuç `stop_reason` alanında görünür — sessiz kırpma yok.
 
-**5. Node veri modeli.**
-Doküman bazlı oy için kaynak ID, tazelik eşitlik bozucusu için timestamp,
-katman etiketi ve tema kümeleri için cluster ID gerekiyor — şema hiç yazılmadı.
-
-**6. Chunk boyutu.**
+**5. Chunk boyutu.**
 Yalnızca "300-500 token" olarak telaffuz edildi ([[alternative-directions]]),
 karar verilmedi.
 
-**7. Profil parametre değerleri.**
+**6. Profil parametre değerleri.**
 `precise` / `explore` / `compare` için damping, eşik ve seed genişliği
 değerleri ([[query-profiles-and-negative-seeds]]) atanmadı.
 
-**8. Atom kütlesi formülü.**
+**7. Atom kütlesi formülü.**
 "Uzunlukla orantılı" ötesinde formül yok ([[node-layers-and-mass]]).
 
-**9. Novelty@k alaka yargısı.**
+**8. Novelty@k alaka yargısı.**
 `top-k`'nın hiç getirmediği bir düğümün "yine de ilgili" sayılma yöntemi
 tanımlanmadı ([[phase1-settings]]).
 
-**10. Öğrenen katman unutma katsayısı.**
+**9. Öğrenen katman unutma katsayısı.**
 Zorunlu ([[learned-layer-hebbian]]) ama değeri seçilmedi.
 
-**11. NLI model seçimi ve aday çifti eşiği.**
+**10. NLI model seçimi ve aday çifti eşiği.**
 [[contradiction-detection]] kararının uygulama detayları.
 
-**12. Negatif önerme (polarite) tespit yöntemi.**
+**11. Negatif önerme (polarite) tespit yöntemi.**
 [[negative-knowledge-atoms]] için: olumsuz önermeler NLI hattında mı, ayrı bir
 polarite sınıflandırıcısıyla mı tespit edilecek? Faz 1 ölçümünden sonra,
 ablation uygulamasından önce netleşmeli.
 
 ## Kapanan başlıklar
+
+**2026-08-13 (uygulama adım 2):** node veri modeli kapandı — `core/graph.py`
+içinde `Node` şeması: `id`, `layer` (chunk/proposition), `source_id` (doküman
+bazlı oy), `length` (kütle formülünün ham girdisi; formülün kendisi hâlâ açık,
+bkz. madde 7), `timestamp` (**UTC epoch float** — tazelik yalnız eşitlik bozucu
+olduğundan tek ihtiyaç toplam sıralama; `datetime` aware/naive tuzağı ve ISO
+format hassasiyeti nedeniyle elendi), `cluster_id`, D34 `polarity` (+1/−1,
+varsayılan +1). Kenar katmanları `LayerWeights` config'iyle ağırlıklı toplamla
+birleşiyor; ağırlık 0.0 = katman kapalı (ablation anahtarı).
 
 **2026-08-12 oturumunda kapananlar:** çelişki tespiti → index anında NLI
 ([[contradiction-detection]]); durma eşiği → göreli %15
