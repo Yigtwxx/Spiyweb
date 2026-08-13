@@ -1,6 +1,6 @@
 ---
 name: open-questions
-description: Kalan açık sorular — 2026-08-13 güncellemesi; node veri modeli kapandı (adım 2), 11 başlık açık
+description: Kalan açık sorular — 2026-08-13 güncellemesi; #12 (ChunkRef-vs-Node) adım 5'te kapandı, 11 başlık açık
 metadata:
   type: project
 ---
@@ -61,7 +61,24 @@ Zorunlu ([[learned-layer-hebbian]]) ama değeri seçilmedi.
 polarite sınıflandırıcısıyla mı tespit edilecek? Faz 1 ölçümünden sonra,
 ablation uygulamasından önce netleşmeli.
 
+Not (adım 3): `SemanticEdgeConfig.k = 5`, `min_similarity = 0.0` ve
+`StructuralEdgeConfig` alt-ağırlıkları (1.0 / 0.6 / 0.0) **geçici el
+değerleridir**; katman ağırlıklarıyla aynı grid-search planına dahiller
+([[phase1-settings]]).
+
+Not (adım 4): `EntityEdgeConfig.max_df_ratio = 0.5`,
+`EntityExtractionConfig.min_entities = 1` ve varsayılan label seti de aynı
+statüde — geçici el değerleri, grid-search havuzunda.
+
 ## Kapanan başlıklar
+
+**2026-08-13 (uygulama adım 5) — eski #12 kapandı:** `Node` pozisyon
+alanlarını EMMEDİ; `ChunkRef` index-zamanı girdi sözleşmesi olarak kaldı
+(sahibi seçti). `nodes/chunks.py` her unit için Node + ChunkRef çiftini
+birlikte üretir ve iki yapıyı adım adım tutarlı tutan tek yer chunker'dır.
+Gerekçe: yayılmanın hiç okumadığı alanlar çekirdek şemasına girmesin
+(boundary rule 2). Ayrıca **entity kenar ağırlığı** karara bağlandı:
+nadirlik ağırlıklı `Σ 1/df(e)` — [[hybrid-edge-layers]].
 
 **2026-08-13 (uygulama adım 2):** node veri modeli kapandı — `core/graph.py`
 içinde `Node` şeması: `id`, `layer` (chunk/proposition), `source_id` (doküman
