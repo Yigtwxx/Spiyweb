@@ -18,3 +18,81 @@ Rules:
 Text:
 {text}
 """
+
+PROPOSITION_EXTRACTION_PROMPT = """\
+Extract the atomic factual propositions stated in the following text.
+
+Rules:
+- Output ONE proposition per line.
+- Each proposition is a single, self-contained factual sentence.
+- Resolve pronouns: name the actual person, place or thing they refer to.
+- Do not add facts the text does not state. No commentary, no numbering.
+- If the text states no facts, output nothing.
+
+Text:
+{text}
+"""
+
+QUERY_DECOMPOSITION_PROMPT = """\
+Split the question into the SMALLEST number of search queries that together
+cover every fact it needs. Most questions need exactly 2; use 3 or 4 ONLY if
+the question truly chains that many separate facts. Follow the examples.
+
+Question: Who is the spouse of the performer of the song Green?
+Queries:
+song Green performer
+performer of the song Green spouse
+
+Question: In which country is the city where Air China's headquarters is located?
+Queries:
+Air China headquarters city
+country of the city of Air China headquarters
+
+Question: Who founded the company that owns the studio that released the film Avatar?
+Queries:
+film Avatar studio
+studio that released Avatar owner company
+founder of the company that owns the Avatar studio
+
+Rules:
+- One search query per line, nothing else.
+- Each query is self-contained keywords naming the concrete entities,
+  works, places or relations it asks about.
+- Do not number the lines. Do not answer the question.
+
+Question: {question}
+Queries:
+"""
+
+INTERMEDIATE_ANSWER_PROMPT = """\
+Read the passage and answer the question with ONLY the exact name or phrase
+it asks for - a few words, no sentence, no explanation. If the passage does
+not answer it, reply exactly: NONE
+
+Passage: {title}
+{text}
+
+Question: {subquestion}
+Answer:
+"""
+
+QUERY_REWRITE_PROMPT = """\
+You answer a multi-hop question step by step. You have already retrieved the
+paragraphs below and written the reasoning steps so far. Write the SINGLE next
+reasoning sentence. Name the fact you still need to look up, or - if the
+collected paragraphs already suffice - state the conclusion in the form
+"... answer is ...".
+
+Rules:
+- Output exactly ONE sentence.
+- No commentary, no numbering, no restating the question.
+
+Question:
+{question}
+
+Retrieved paragraphs:
+{paragraphs}
+
+Reasoning so far:
+{reasoning}
+"""
