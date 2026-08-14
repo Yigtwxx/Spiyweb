@@ -123,3 +123,83 @@ def _parse_completion(raw: bytes) -> str:
     if not isinstance(content, str):
         raise LLMError("provider returned a non-string message content")
     return content
+
+
+def _native_chat_url(base_url: str) -> str:
+    """Derive Ollama's native chat endpoint from an OpenAI-compat base URL."""
+    root = base_url.rstrip("/")
+    if root.endswith("/v1"):
+        root = root[: -len("/v1")]
+    return root + "/api/chat"
+
+
+class NativeOllamaClient:
+    """Ollama's native `/api/chat` client - exists to disable thinking.
+
+    A thinking model (e.g. qwen3.5) burns its whole token budget on reasoning
+    when called through the OpenAI-compatible endpoint and returns an empty
+    content string; only the native endpoint accepts `think: false`. The
+    tour-12 decomposition winner (qwen3.5:9b) runs through this client.
+    Same injectable transport/sleep and the same retry policy as
+    `OpenAICompatClient`; satisfies `LLMClient` structurally.
+    """
+
+    def __init__(
+        self,
+        config: LLMConfig | None = None,
+        transport: Callable[[str, bytes, Mapping[str, str], float], bytes]
+        | None = None,
+        sleep: Callable[[float], None] = time.sleep,
+        *,
+        think: bool = False,
+    ) -> None:
+        self._config = config if config is not None else LLMConfig()
+        self._transport = transport if transport is not None else _urllib_transport
+        self._sleep = sleep
+        self._think = think
+
+    def complete(self, prompt: str) -> str:
+        """POST `prompt` to the native endpoint; return the reply text."""
+        config = self._config
+        url = _native_chat_url(config.base_url)
+        body = json.dumps(
+            {
+                "model": config.model,
+                "messages": [{"role": "user", "content": prompt}],
+                "think": self._think,
+                "stream": False,
+                "options": {
+                    "temperature": config.temperature,
+                    "num_predict": config.max_tokens,
+                },
+            }
+        ).encode("utf-8")
+        headers = {"Content-Type": "application/json"}
+
+        last_error: Exception | None = None
+        for attempt in range(config.max_retries + 1):
+            if attempt > 0:
+                self._sleep(config.retry_backoff_seconds * 2 ** (attempt - 1))
+            try:
+                raw = self._transport(url, body, headers, config.timeout_seconds)
+            except (urllib.error.URLError, OSError) as error:
+                last_error = error
+                continue
+            return _parse_native_completion(raw)
+        raise LLMError(
+            f"request to {url} failed after {config.max_retries + 1} attempts"
+        ) from last_error
+
+
+def _parse_native_completion(raw: bytes) -> str:
+    """Extract `message.content`; anything else is an `LLMError`."""
+    try:
+        payload = json.loads(raw)
+        content = payload["message"]["content"]
+    except (ValueError, KeyError, TypeError) as error:
+        raise LLMError(
+            "provider returned a response without message.content"
+        ) from error
+    if not isinstance(content, str):
+        raise LLMError("provider returned a non-string message content")
+    return content
