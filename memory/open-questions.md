@@ -1,106 +1,76 @@
 ---
 name: open-questions
-description: Kalan açık sorular — 2026-08-13 güncellemesi; #12 (ChunkRef-vs-Node) adım 5'te kapandı, 11 başlık açık
+description: Kalan açık sorular — 2026-08-14 sadeleştirmesi; 8 başlık açık (#2 önerme maliyeti, #4 fren değerleri, #5 chunk boyutu, #6 profil değerleri, #7 kütle formülü, #9 unutma katsayısı, #10 NLI seçimi, #11 polarite tespiti); kapananların tam metni arşivde
 metadata:
   type: project
 ---
 
-Önceki 11 teknik varsayılan tek tek soruldu ve karara bağlandı
-([[phase1-settings]]). 13 tasarım ekseni de kapandı. Geriye kalanlar, ancak kod
-yazılırken veya ilk ölçümden sonra netleşebilecek konular.
+Önceki 11 teknik varsayılan ve 13 tasarım ekseni karara bağlandı
+([[phase1-settings]]). Geriye kalanlar, ancak kod yazılırken veya ölçümden
+sonra netleşebilecek konular.
 
 ## Kalan açık konular
 
-**1. Hedef karışımının tek sayıya indirgenmesi.**
-Hedef `%65 multi-hop doğruluk + %35 Novelty@k`. İki metriğin ölçekleri farklı;
-ağırlıklı toplam almadan önce normalizasyon kuralı belirlenmeli. Aksi hâlde "%65"
-ve "%35" nominal kalır, gerçek etki farklı olur.
-
 **2. Önerme çıkarımının maliyeti.**
 İki katmanlı düğüm yapısı ([[node-layers-and-mass]]) index anında LLM çağrısı
-gerektiriyor. MuSiQue sabit ve sınırlı bir corpus olduğu için 1. fazda
-yönetilebilir; ama kendi dokümanlarına uygulandığında maliyet ölçülmeli ve
-belgelenmeli. Gerekirse "önerme katmanı opsiyonel" hale gelir.
-
-**3. Uyarlanabilir tekrar eşiğinin formülü.**
-Karar "uyarlanabilir" ([[phase1-settings]]) ama hesaplama yöntemi seçilmedi —
-aktif düğümlerin benzerlik dağılımında yüzdelik dilim mi, sapma temelli mi?
-Hata ayıklaması zor bir mekanizma olduğu için UI'da hesaplanan eşik mutlaka
-görünmeli.
+gerektiriyor. 2026-08-14: kod hazır ve zaten OPSİYONEL (`--propositions`
+bayrağı, varsayılan kapalı; çağrı sayısı koşudan önce loglanır) — maliyet
+ölçümü hâlâ yapılmadı, soru AÇIK.
 
 **4. Emniyet freni değerleri.**
-Durma göreli enerji eşiğiyle ([[stopping-and-freshness]]); `max_nodes` ve
-`max_hop` üst sınırları taşma koruması olarak gerekli. Kodda **geçici
-varsayılan** olarak `max_hop = 6`, `max_nodes = 512` seçildi (bir değer yazmak
-zorunluydu); gerçek değerler ilk ölçümlerden sonra netleşecek. Fren devreye
-girdiğinde sonuç `stop_reason` alanında görünür — sessiz kırpma yok.
+`max_hop = 6`, `max_nodes = 512` geçici varsayılan. Veri birikiyor: 12 turluk
+kampanyada ve seed-123 onayında 1000/1000 sorgu `threshold` ile durdu —
+frenler mevcut kazanan ayarda hiç devreye girmedi. Kalıcı değerler farklı
+corpus/profillerde test edilince atanacak; `stop_reason` raporu kuralı geçerli.
 
 **5. Chunk boyutu.**
-Yalnızca "300-500 token" olarak telaffuz edildi ([[alternative-directions]]),
-karar verilmedi.
+Yalnızca "300-500 token" olarak telaffuz edildi ([[alternative-directions]]);
+MuSiQue paragraf verdiği için henüz zorlanmadı.
 
 **6. Profil parametre değerleri.**
 `precise` / `explore` / `compare` için damping, eşik ve seed genişliği
-değerleri ([[query-profiles-and-negative-seeds]]) atanmadı.
+değerleri ([[query-profiles-and-negative-seeds]]). 2026-08-14: `profiles.py`
+yazıldı ve GEÇİCİ el değerleri atandı (PRECISE .45/.25/3, EXPLORE .75/.05/8,
+COMPARE .60/.10/6) — soru ölçümle kapanır, henüz kapanmadı.
 
 **7. Atom kütlesi formülü.**
-"Uzunlukla orantılı" ötesinde formül yok ([[node-layers-and-mass]]).
-
-**8. Novelty@k alaka yargısı.**
-`top-k`'nın hiç getirmediği bir düğümün "yine de ilgili" sayılma yöntemi
-tanımlanmadı ([[phase1-settings]]).
+2026-08-14: formül ÖNERİLDİ ve kodda (`core/mass.py`:
+`μ = clamp((len/katman_ort)**exp, .5, 2)`; kapı `threshold·μ` + iletim
+`damping**(1/μ)`) — GEÇİCİ, varsayılan KAPALI; değerler ve açılış kararı
+ölçüm bekliyor, soru o zamana dek açık.
 
 **9. Öğrenen katman unutma katsayısı.**
 Zorunlu ([[learned-layer-hebbian]]) ama değeri seçilmedi.
 
 **10. NLI model seçimi ve aday çifti eşiği.**
-[[contradiction-detection]] kararının uygulama detayları.
+[[contradiction-detection]] uygulama detayları; `edges/nli.py` Protocol'ü
+hazır, gerçek model sarmalayıcısı [[faz1-kalanlar]] madde 1.
 
 **11. Negatif önerme (polarite) tespit yöntemi.**
-[[negative-knowledge-atoms]] için: olumsuz önermeler NLI hattında mı, ayrı bir
-polarite sınıflandırıcısıyla mı tespit edilecek? Faz 1 ölçümünden sonra,
-ablation uygulamasından önce netleşmeli.
+[[negative-knowledge-atoms]] için: NLI hattında mı, ayrı polarite
+sınıflandırıcısıyla mı? 2026-08-14: emme MEKANİZMASI kütüphanede
+(`core/polarity.py` + `PolarityConfig`, çekirdek yalnız `polarity=-1`
+etiketini tüketir); tespit tarafı hâlâ açık — ölçümlü ablation tespit
+gelmeden koşulamaz.
 
-Not (adım 3): `SemanticEdgeConfig.k = 5`, `min_similarity = 0.0` ve
-`StructuralEdgeConfig` alt-ağırlıkları (1.0 / 0.6 / 0.0) **geçici el
-değerleridir**; katman ağırlıklarıyla aynı grid-search planına dahiller
-([[phase1-settings]]).
+Not: kenar/çıkarım config varsayılanlarının çoğu grid'le ölçüldü ve kazanan
+değerler kütüphane varsayılanı oldu (örn. `max_df_ratio` .02, renk-başı
+seed_width 2, thr .01, alpha 3); `SemanticEdgeConfig.k` ve yapısal
+alt-ağırlıklar hâlâ el değeri statüsünde.
 
-Not (adım 4): `EntityEdgeConfig.max_df_ratio = 0.5`,
-`EntityExtractionConfig.min_entities = 1` ve varsayılan label seti de aynı
-statüde — geçici el değerleri, grid-search havuzunda.
+## Kapanan başlıklar (özet — tam metin [[arsiv-uygulama-gunlugu]] ekinde)
 
-## Kapanan başlıklar
-
-**2026-08-13 (uygulama adım 5) — eski #12 kapandı:** `Node` pozisyon
-alanlarını EMMEDİ; `ChunkRef` index-zamanı girdi sözleşmesi olarak kaldı
-(sahibi seçti). `nodes/chunks.py` her unit için Node + ChunkRef çiftini
-birlikte üretir ve iki yapıyı adım adım tutarlı tutan tek yer chunker'dır.
-Gerekçe: yayılmanın hiç okumadığı alanlar çekirdek şemasına girmesin
-(boundary rule 2). Ayrıca **entity kenar ağırlığı** karara bağlandı:
-nadirlik ağırlıklı `Σ 1/df(e)` — [[hybrid-edge-layers]].
-
-**2026-08-13 (uygulama adım 2):** node veri modeli kapandı — `core/graph.py`
-içinde `Node` şeması: `id`, `layer` (chunk/proposition), `source_id` (doküman
-bazlı oy), `length` (kütle formülünün ham girdisi; formülün kendisi hâlâ açık,
-bkz. madde 7), `timestamp` (**UTC epoch float** — tazelik yalnız eşitlik bozucu
-olduğundan tek ihtiyaç toplam sıralama; `datetime` aware/naive tuzağı ve ISO
-format hassasiyeti nedeniyle elendi), `cluster_id`, D34 `polarity` (+1/−1,
-varsayılan +1). Kenar katmanları `LayerWeights` config'iyle ağırlıklı toplamla
-birleşiyor; ağırlık 0.0 = katman kapalı (ablation anahtarı).
-
-**2026-08-12 oturumunda kapananlar:** çelişki tespiti → index anında NLI
-([[contradiction-detection]]); durma eşiği → göreli %15
-([[stopping-and-freshness]]); termal reset → hibrit
-([[conversation-thermal-memory]]); Faz-1 kapısı → iki baseline + HippoRAG
-rapor kıyası, LLM sağlayıcı, platform ve paketleme → [[phase1-settings]].
-
-Ayrıntı ve gerekçeler ilgili dosyalarda: [[learned-layer-hebbian]],
-[[conversation-thermal-memory]], [[consolidation-pruning]],
-[[confidence-and-abstention]], [[corpus-gap-detection]], [[output-contract]],
-[[query-profiles-and-negative-seeds]], [[contradiction-handling]],
-[[multi-seed-colors]], [[node-layers-and-mass]], [[stopping-and-freshness]],
-[[phase1-settings]].
+- **#1 hedef normalizasyonu + #8 Novelty alaka yargısı** (adım 6):
+  `S@k = 0.65·recall + 0.35·novelty`, iki terim aynı `|gold|` paydasında;
+  ilgili := gold `is_supporting`. Formüller `evaluation/metrics.py` +
+  `EvaluationConfig`'te yaşıyor.
+- **#3 uyarlanabilir tekrar eşiği** (tur 11): formül seçildi ve ölçüldü —
+  `tau = max(floor, mean + sigma·std)` (`core/dedup.py`), floor varsayılanı
+  .95 (ölçülen güvenli nokta); eşik sonuçta `dedup_thresholds` alanıyla
+  görünür, UI'da gösterme kuralı [[faz1-kalanlar]] madde 6'da sürüyor.
+- **Eski #12 Node/ChunkRef ayrımı** (adım 5) ve **node veri modeli** (adım 2).
+- **2026-08-12 kapanışları:** NLI ile çelişki tespiti, göreli %15 eşik,
+  hibrit termal reset, çift-baseline kapısı → ilgili karar dosyaları.
 
 Değerlendirilip ertelenen yönler: [[alternative-directions]] (D — öğrenilmiş
 sönümleme, 2. faz).
