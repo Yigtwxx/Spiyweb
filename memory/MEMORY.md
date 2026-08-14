@@ -43,11 +43,14 @@ tek bir gerçek içerir.
 
 ## Durum
 
-- [Proje durumu](project-status.md) — tasarım bitti, uygulama başladı; adım 1 (yayılma çekirdeği + kanonik iz testi + CI) tamam
+- [Proje durumu](project-status.md) — FAZ 1 KAPISI GEÇİLDİ: S@5 .512 (seed 42) / .507 (seed-123 onayı), iteratif anlamlı geride; kompakt özet + güncel sayılar
+- [Faz 1 kalanlar](faz1-kalanlar.md) — kalan iş listesi (A1 dedup fayda kanıtı önde) + bitmiş sayılanların formülleri
+- [Ölçüm protokolü](olcum-protokolu.md) — ayar seed 42, onay seed 123, faz kapanışı tam dev; holdout'ta ayar yasak
+- [Arşiv: uygulama günlüğü](arsiv-uygulama-gunlugu.md) — adım 1-8 ve tur 1-12'nin tam kronolojik anlatımı (donduruldu, 2026-08-14)
 
 ## Uyarılar ve bekleyenler
 
 - [Literatür ve farklılaşma](prior-art-and-differentiation.md) — HippoRAG/GraphRAG var; fark yayılmada değil dedup'ta
 - [Bilinen riskler](known-risks.md) — çelişki körlüğü, hub cezası, tekrar ≠ doğruluk
 - [Alternatif yönler](alternative-directions.md) — değerlendirilen yönler; D (öğrenilmiş sönümleme) 2. faza ertelendi
-- [Açık sorular](open-questions.md) — 2026-08-12'de güncellendi; veri modeli ve parametre değerleri uygulama sırasında netleşecek
+- [Açık sorular](open-questions.md) — 8 başlık açık (fren değerleri, profiller, kütle, NLI seçimi...); kapananların tam metni arşivde
