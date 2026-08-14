@@ -104,7 +104,7 @@ def extract_entities(
                 reply = llm.complete(
                     ENTITY_EXTRACTION_PROMPT.format(text=texts[chunk_id])
                 )
-                results[chunk_id] = _normalize_and_dedupe(_parse_lines(reply))
+                results[chunk_id] = _normalize_and_dedupe(parse_listing(reply))
 
     return results
 
@@ -121,9 +121,14 @@ def _normalize_and_dedupe(raw: Iterable[str]) -> list[str]:
     return ordered
 
 
-def _parse_lines(reply: str) -> list[str]:
-    """Parse a one-entity-per-line completion, tolerating list decorations."""
-    entities: list[str] = []
+def parse_listing(reply: str) -> list[str]:
+    """Parse a one-item-per-line completion, tolerating list decorations.
+
+    Shared by every extractor that asks for plain-text listings (entities,
+    propositions): bullets (`- `, `* `, `+ `) and `1. ` numbering are
+    stripped, blank lines dropped, order preserved.
+    """
+    items: list[str] = []
     for raw_line in reply.splitlines():
         line = raw_line.strip()
         for prefix in ("- ", "* ", "+ "):
@@ -135,5 +140,5 @@ def _parse_lines(reply: str) -> list[str]:
             if dot and head.isdigit():
                 line = tail.strip()
         if line:
-            entities.append(line)
-    return entities
+            items.append(line)
+    return items
