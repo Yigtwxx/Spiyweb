@@ -41,10 +41,10 @@ knobs. Full rationale for each lives in `memory/`.
 | Split | Energy is **divided** among neighbours, **proportional to edge weight** | One neighbour gets ~60%; five equidistant neighbours get ~12% each |
 | Accumulation | **Additive** — energy arriving via multiple paths sums | Gives converging evidence for free |
 | Dedup renormalisation | After a duplicate's edge is zeroed, the remaining neighbour weights are **renormalised** — the duplicate's share is redistributed | Visible in the worked example; stated here as a rule, not an accident |
-| Energy conservation | Dedup **redistributes** (conserves) energy; negative seeds and contradictions **absorb** (destroy) it; nothing else creates or destroys energy | Makes every mechanism's effect on the energy ledger auditable |
+| Energy conservation | Dedup **redistributes** (conserves) energy; negative seeds, contradictions and negative-polarity atoms **absorb** (destroy) it; nothing else creates or destroys energy | Makes every mechanism's effect on the energy ledger auditable |
 | Stop condition | **Relative energy threshold** — 15% of total injected energy (`1.5` against a seed of `10.0`) — *not* a token budget | Scales consistently when thermal residue or profiles change the injected total; keeps the mechanism pure and context-window independent |
 | Safety caps | `max_nodes` and `max_hop` as hard overflow guards | The threshold is the primary stop; these only prevent surprises |
-| Node mass | Proportional to length, **normalised within its own layer** | Without per-layer normalisation the proposition layer silently dies |
+| Node mass | Proportional to length, **normalised within its own layer** (mechanism landed 2026-08-14: `core/mass.py`, gate `threshold·μ` + carry `damping^(1/μ)`; **default OFF** until measured — open question #7) | Without per-layer normalisation the proposition layer silently dies |
 | Freshness | **Tie-breaker only**, never a continuous multiplier | A continuous boost quietly promotes recent-but-irrelevant content |
 
 ### 2.2 Nodes and edges
@@ -52,7 +52,7 @@ knobs. Full rationale for each lives in `memory/`.
 | Rule | Value / behaviour |
 |---|---|
 | Node layers | **Two**: chunk nodes and proposition nodes, linked to each other |
-| Edge layers | **Layered hybrid** — `semantic` (cosine, seed contact + fallback only), `entity` (main hop fuel), `structural` (same doc/section/adjacent), `learned` (usage-reinforced) |
+| Edge layers | **Layered hybrid** — `semantic` (cosine, seed contact + fallback only), `entity` (main hop fuel), `structural` (same doc/section/adjacent), `derivation` (chunk→proposition containment), `learned` (usage-reinforced) |
 | Learned layer | Hebbian reinforcement lives in a **separate, disableable layer**; the base graph is never mutated |
 | Consolidation | Periodic offline **pruning** of never-used edges. Node merging is deferred to Phase 2 (irreversible) |
 
@@ -61,6 +61,7 @@ knobs. Full rationale for each lives in `memory/`.
 | Rule | Value / behaviour |
 |---|---|
 | Redundancy | Near-duplicate neighbour: **edge weight → 0**, source idea's **vote count += 1** |
+| Seed twins | Duplicate CONTACTS never each hold a seed slot: suppressed at injection (`include_seeds`) and skipped at contact selection with **elastic refill** (`contact_overfetch`) — the freed slot goes to the next distinct idea, the survivor is voted. Measured 2026-08-14 (A1): injected twins were the dominant redundancy damage channel; neighbour-level suppression alone was statistically neutral |
 | Duplicate detection | **Dynamic**, at query time, among currently active nodes |
 | Duplicate threshold | **Adaptive**, computed from the active set's similarity distribution — the computed value must be visible in the UI |
 | Vote granularity | Per **document/source**, never per chunk |
@@ -69,7 +70,7 @@ knobs. Full rationale for each lives in `memory/`.
 | Contradiction surfacing | The library emits a **template-built, LLM-free question with options** for the user |
 | No answer given | **Both sides enter the context, flagged as disputed.** Never silently pick a winner |
 | Negative requests | "excluding X", "without Y" → **energy-absorbing negative seed**, not a post-filter |
-| Negative knowledge | Negated propositions ("X does not…") become permanently **negative-polarity atoms**: they absorb the energy of queries asserting the opposite and emit a "corpus disputes this" warning. Designed now (schema `polarity` field + config flag); implemented as an ablation **after** the first Phase 1 measurement |
+| Negative knowledge | Negated propositions ("X does not…") become permanently **negative-polarity atoms**: they absorb the energy of queries asserting the opposite and emit a "corpus disputes this" warning. Implemented 2026-08-14 (`core/polarity.py` + `PolarityConfig`, proportional absorption, full by default) after the first Phase 1 measurement, as planned; polarity DETECTION at index time stays open (question #11) |
 | Supersession | NLI contradiction + ordered timestamps on the same subject = **update, not conflict** — older atom damped, newer marked current, no user question emitted. Freshness tie-break stays separate: supersession requires NLI evidence, not mere recency. Implementation in Phase 2 |
 
 ### 2.4 Query shaping
@@ -135,14 +136,18 @@ is a regression, whatever the benchmark says.
 src/spiyweb/
 ├── core/                 # pure computation - ZERO I/O, zero heavy dependencies
 │   ├── graph.py          # sparse adjacency, multi-layer edge merging, node layers
+│   ├── mass.py           # node mass (D11): per-layer normalised inertia
 │   ├── propagate.py      # damping, proportional split, accumulation, threshold, mass
 │   ├── dedup.py          # dynamic redundancy suppression: edge -> 0, vote += 1
 │   ├── colors.py         # multi-seed coloured activation, bridge detection
-│   └── conflict.py       # contradiction as negative charge
+│   ├── conflict.py       # contradiction as negative charge
+│   ├── negative.py       # negative seeds: the energy-absorbing field
+│   └── polarity.py       # negative-knowledge atoms (D34): dispute records
 ├── edges/                # hybrid edge builders
 │   ├── semantic.py       # cosine kNN (seed contact + fallback only)
 │   ├── entity.py         # shared entity / concept edges (main hop fuel)
 │   ├── structural.py     # same document, same section, adjacent chunk
+│   ├── derivation.py     # chunk -> proposition containment links (D10)
 │   ├── nli.py            # index-time NLI: emits negative (contradiction) edges
 │   └── learned.py        # Hebbian reinforcement, separate and disableable
 ├── nodes/
@@ -153,14 +158,19 @@ src/spiyweb/
 ├── llm.py                # LLM provider abstraction: Ollama default, free APIs optional
 ├── prompts.py            # prompt templates, kept apart from pipeline logic
 ├── profiles.py           # precise / explore / compare propagation profiles
+├── thermal.py            # ThermalSession: conversation warmth across turns
 ├── config.py             # dataclass: damping, threshold, max_hop, max_nodes, weights
 ├── store.py              # numpy + FAISS single-file vector store (outside core/)
+│                         #   + FAISS-backed twin of the semantic edge builder
 ├── output.py             # result structure, paths, clusters, confidence, conflicts
 ├── retrieve.py           # seed injection -> propagate -> structured result
 └── evaluation/           # renamed from eval/ — avoids shadowing the Python builtin
-    ├── datasets.py       # MuSiQue loader
-    ├── baseline.py       # plain top-k + iterative retrieval
-    └── run.py            # side-by-side metric report
+    ├── datasets.py       # MuSiQue loader: download, deterministic sample, dedup pool
+    ├── metrics.py        # support recall, Novelty@k, bridge recall, weighted S@k
+    ├── baseline.py       # plain top-k + IRCoT-style iterative retrieval
+    ├── cache.py          # deterministic prompt-hash LLM cache (reproducible runs)
+    ├── index.py          # corpus -> vectors + entities + edge-layer artifacts
+    └── run.py            # CLI: download / index / evaluate / report
 
 ui/                       # developer tool, optional extra: pip install spiyweb[ui]
 ├── app.py                # single-page Streamlit inspector
