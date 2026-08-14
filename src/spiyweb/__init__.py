@@ -1,37 +1,153 @@
 """Spiyweb - graph-based retrieval driven by spreading activation."""
 
 from spiyweb.config import (
+    ColoredRetrievalConfig,
+    ConflictConfig,
+    ConsolidationConfig,
+    DedupConfig,
     EdgeLayer,
     EmbeddingConfig,
     EntityEdgeConfig,
     EntityExtractionConfig,
+    EvaluationConfig,
+    IterativeBaselineConfig,
     LayerWeights,
+    LearnedLayerConfig,
     LLMConfig,
+    MassConfig,
+    NegativeSeedConfig,
+    NLIEdgeConfig,
+    OutputConfig,
+    PolarityConfig,
     PropagationConfig,
+    PropositionConfig,
+    RetrievalConfig,
     SemanticEdgeConfig,
     StructuralEdgeConfig,
+    ThermalConfig,
 )
+from spiyweb.core.colors import ColoredResult, propagate_colored
+from spiyweb.core.conflict import (
+    ConflictRecord,
+    NegativeEdge,
+    conflict_adjacency,
+    neutralize,
+)
+from spiyweb.core.dedup import SimilarityFn, adaptive_threshold, find_survivor
 from spiyweb.core.graph import Graph, Node, NodeLayer, Polarity
+from spiyweb.core.mass import node_masses
+from spiyweb.core.negative import AbsorptionRecord, negative_field
+from spiyweb.core.polarity import DisputeRecord
 from spiyweb.core.propagate import Activation, PropagationResult, propagate
+from spiyweb.edges.consolidate import ConsolidationReport, EdgeUsage, prune_layers
+from spiyweb.edges.derivation import build_derivation_edges
+from spiyweb.edges.learned import LearnedLayer
+from spiyweb.nodes.propositions import Proposition, extract_propositions
+from spiyweb.output import (
+    ActivationPath,
+    DisputeWarning,
+    GapWarning,
+    RefusalReport,
+    ThemeCluster,
+    activation_paths,
+    build_refusal_report,
+    color_composition,
+    dispute_warnings,
+    entity_edge_labels,
+    gap_warnings,
+    theme_clusters,
+)
+from spiyweb.profiles import COMPARE, EXPLORE, PRECISE, PROFILES, Profile
+from spiyweb.questions import ConflictQuestion, build_conflict_question
+from spiyweb.retrieve import (
+    ColoredRetrievalResult,
+    Confidence,
+    RetrievalResult,
+    SeedSource,
+    retrieve,
+    retrieve_colored,
+)
+from spiyweb.thermal import ThermalSession
 
 __version__ = "0.0.1"
 
 __all__ = [
+    "COMPARE",
+    "EXPLORE",
+    "PRECISE",
+    "PROFILES",
+    "AbsorptionRecord",
     "Activation",
+    "ActivationPath",
+    "ColoredResult",
+    "ColoredRetrievalConfig",
+    "ColoredRetrievalResult",
+    "Confidence",
+    "ConflictConfig",
+    "ConflictQuestion",
+    "ConflictRecord",
+    "ConsolidationConfig",
+    "ConsolidationReport",
+    "DedupConfig",
+    "DisputeRecord",
+    "DisputeWarning",
     "EdgeLayer",
+    "EdgeUsage",
     "EmbeddingConfig",
     "EntityEdgeConfig",
     "EntityExtractionConfig",
+    "EvaluationConfig",
+    "GapWarning",
     "Graph",
+    "IterativeBaselineConfig",
     "LLMConfig",
     "LayerWeights",
+    "LearnedLayer",
+    "LearnedLayerConfig",
+    "MassConfig",
+    "NLIEdgeConfig",
+    "NegativeEdge",
+    "NegativeSeedConfig",
     "Node",
     "NodeLayer",
+    "OutputConfig",
     "Polarity",
+    "PolarityConfig",
+    "Profile",
     "PropagationConfig",
     "PropagationResult",
+    "Proposition",
+    "PropositionConfig",
+    "RefusalReport",
+    "RetrievalConfig",
+    "RetrievalResult",
+    "SeedSource",
     "SemanticEdgeConfig",
+    "SimilarityFn",
     "StructuralEdgeConfig",
+    "ThemeCluster",
+    "ThermalConfig",
+    "ThermalSession",
     "__version__",
+    "activation_paths",
+    "adaptive_threshold",
+    "build_conflict_question",
+    "build_derivation_edges",
+    "build_refusal_report",
+    "color_composition",
+    "conflict_adjacency",
+    "dispute_warnings",
+    "entity_edge_labels",
+    "extract_propositions",
+    "find_survivor",
+    "gap_warnings",
+    "negative_field",
+    "neutralize",
+    "node_masses",
     "propagate",
+    "propagate_colored",
+    "prune_layers",
+    "retrieve",
+    "retrieve_colored",
+    "theme_clusters",
 ]
