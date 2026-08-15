@@ -7,11 +7,15 @@ import json
 import pytest
 
 from spiyweb import LLMConfig
-from spiyweb.llm import LLMError, OpenAICompatClient
+from spiyweb.llm import LLMError, NativeOllamaClient, OpenAICompatClient
 
 
 def make_reply(content: str) -> bytes:
     return json.dumps({"choices": [{"message": {"content": content}}]}).encode()
+
+
+def make_native_reply(content: str) -> bytes:
+    return json.dumps({"message": {"content": content}}).encode()
 
 
 class RecordingTransport:
@@ -140,3 +144,36 @@ def test_base_url_trailing_slash_does_not_double_the_separator() -> None:
 def test_config_rejects_out_of_range_values(field: str, value: object) -> None:
     with pytest.raises(ValueError, match=field.split("_")[0]):
         LLMConfig(**{field: value})  # type: ignore[arg-type]
+
+
+def test_native_client_posts_think_false_to_the_native_endpoint() -> None:
+    transport = RecordingTransport([make_native_reply("ok")])
+    client = NativeOllamaClient(LLMConfig(), transport=transport)
+    assert client.complete("p") == "ok"
+    url, body, _headers, _timeout = transport.calls[0]
+    assert url == "http://localhost:11434/api/chat", (
+        "the /v1 suffix of the OpenAI-compat base URL must be stripped"
+    )
+    payload = json.loads(body)
+    assert payload["think"] is False
+    assert payload["stream"] is False
+    assert payload["options"]["num_predict"] == LLMConfig().max_tokens
+    assert payload["messages"] == [{"role": "user", "content": "p"}]
+
+
+def test_native_client_missing_message_content_raises_llm_error() -> None:
+    for raw in (b"not json", json.dumps({"message": {}}).encode()):
+        client = NativeOllamaClient(LLMConfig(), transport=RecordingTransport([raw]))
+        with pytest.raises(LLMError):
+            client.complete("p")
+
+
+def test_native_client_retries_transport_failures() -> None:
+    transport = RecordingTransport([OSError("down"), make_native_reply("recovered")])
+    sleeps: list[float] = []
+    client = NativeOllamaClient(
+        LLMConfig(max_retries=2), transport=transport, sleep=sleeps.append
+    )
+    assert client.complete("p") == "recovered"
+    assert len(transport.calls) == 2
+    assert sleeps == [LLMConfig().retry_backoff_seconds]
