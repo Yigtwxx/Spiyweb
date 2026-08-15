@@ -32,6 +32,8 @@ ui = ["streamlit>=1.36"]
 store = ["numpy>=1.26", "faiss-cpu>=1.8"]
 embed = ["sentence-transformers>=3.0"]
 entity = ["spacy>=3.7"]
+# Index-time NLI contradiction marking (D26): the real model wrapper only.
+nli = ["torch>=2.2", "transformers>=4.40"]
 index = ["spiyweb[store]", "spiyweb[embed]", "spiyweb[entity]"]
 
 [project.urls]
@@ -51,6 +53,11 @@ src = ["src", "tests"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "ANN", "RUF"]
+
+[tool.ruff.lint.per-file-ignores]
+# Prompt templates are measured artifacts: their text is the LLM-cache key,
+# so a long example line must stay byte-identical to the measured run.
+"src/spiyweb/prompts.py" = ["E501"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
