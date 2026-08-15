@@ -43,15 +43,20 @@ COMPARE .60/.10/6) — soru ölçümle kapanır, henüz kapanmadı.
 Zorunlu ([[learned-layer-hebbian]]) ama değeri seçilmedi.
 
 **10. NLI model seçimi ve aday çifti eşiği.**
-[[contradiction-detection]] uygulama detayları; `edges/nli.py` Protocol'ü
-hazır, gerçek model sarmalayıcısı [[faz1-kalanlar]] madde 1.
+[[contradiction-detection]] uygulama detayları. 2026-08-15: model SEÇİLDİ
+(sahibi: mDeBERTa-v3-base-xnli — küçük, çok dilli) ve kod tamam —
+`nli.py` sarmalayıcısı + `NLIModelConfig`/`NLICandidateConfig` + index
+`--nli` aşaması (`edges_nli.json`, varsayılan kapalı). Eşikler
+(contradiction .9, aday cosine .80/top-5) GEÇİCİ el değerleri — soru
+ölçümle kapanır (MuSiQue'de doğal çelişki yok, uygun corpus ister).
 
 **11. Negatif önerme (polarite) tespit yöntemi.**
-[[negative-knowledge-atoms]] için: NLI hattında mı, ayrı polarite
-sınıflandırıcısıyla mı? 2026-08-14: emme MEKANİZMASI kütüphanede
-(`core/polarity.py` + `PolarityConfig`, çekirdek yalnız `polarity=-1`
-etiketini tüketir); tespit tarafı hâlâ açık — ölçümlü ablation tespit
-gelmeden koşulamaz.
+[[negative-knowledge-atoms]] için. 2026-08-15: yöntem SEÇİLDİ ve kod tamam
+(sahibi: **LLM piggyback** — önerme çıkarım çağrısının kendisi olumsuz
+olguları `NEG:` önekiyle işaretler, sıfır ekstra çağrı, dolaylı
+olumsuzlamayı yakalar; `PropositionConfig.tag_polarity` ablation
+anahtarı, `polarity` alanı propositions.json'a yazılır). Kalan yalnız
+ÖLÇÜM: etiket isabeti + D34 ablation'ı önerme koşusuyla birlikte.
 
 Not: kenar/çıkarım config varsayılanlarının çoğu grid'le ölçüldü ve kazanan
 değerler kütüphane varsayılanı oldu (örn. `max_df_ratio` .02, renk-başı
