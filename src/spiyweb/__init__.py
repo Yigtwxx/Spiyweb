@@ -16,7 +16,9 @@ from spiyweb.config import (
     LLMConfig,
     MassConfig,
     NegativeSeedConfig,
+    NLICandidateConfig,
     NLIEdgeConfig,
+    NLIModelConfig,
     OutputConfig,
     PolarityConfig,
     PropagationConfig,
@@ -42,6 +44,8 @@ from spiyweb.core.propagate import Activation, PropagationResult, propagate
 from spiyweb.edges.consolidate import ConsolidationReport, EdgeUsage, prune_layers
 from spiyweb.edges.derivation import build_derivation_edges
 from spiyweb.edges.learned import LearnedLayer
+from spiyweb.edges.nli import NLIModel, build_nli_edges
+from spiyweb.nli import TransformersNLIModel, contradiction_label_index
 from spiyweb.nodes.propositions import Proposition, extract_propositions
 from spiyweb.output import (
     ActivationPath,
@@ -105,7 +109,10 @@ __all__ = [
     "LearnedLayer",
     "LearnedLayerConfig",
     "MassConfig",
+    "NLICandidateConfig",
     "NLIEdgeConfig",
+    "NLIModel",
+    "NLIModelConfig",
     "NegativeEdge",
     "NegativeSeedConfig",
     "Node",
@@ -128,14 +135,17 @@ __all__ = [
     "ThemeCluster",
     "ThermalConfig",
     "ThermalSession",
+    "TransformersNLIModel",
     "__version__",
     "activation_paths",
     "adaptive_threshold",
     "build_conflict_question",
     "build_derivation_edges",
+    "build_nli_edges",
     "build_refusal_report",
     "color_composition",
     "conflict_adjacency",
+    "contradiction_label_index",
     "dispute_warnings",
     "entity_edge_labels",
     "extract_propositions",
