@@ -11,6 +11,7 @@ from spiyweb.edges.consolidate import ConsolidationReport, EdgeUsage, prune_laye
 from spiyweb.edges.derivation import build_derivation_edges
 from spiyweb.edges.entity import build_entity_edges
 from spiyweb.edges.learned import LearnedLayer
+from spiyweb.edges.nli import NLIModel, build_nli_edges
 from spiyweb.edges.semantic import build_semantic_edges
 from spiyweb.edges.structural import ChunkRef, build_structural_edges
 
@@ -19,8 +20,10 @@ __all__ = [
     "ConsolidationReport",
     "EdgeUsage",
     "LearnedLayer",
+    "NLIModel",
     "build_derivation_edges",
     "build_entity_edges",
+    "build_nli_edges",
     "build_semantic_edges",
     "build_structural_edges",
     "prune_layers",
