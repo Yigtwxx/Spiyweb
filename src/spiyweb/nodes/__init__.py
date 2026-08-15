@@ -7,10 +7,13 @@ index-time records (`ChunkRef`, text) the edge builders and the embedder need.
 """
 
 from spiyweb.nodes.chunks import Chunk, DocumentInput, TextUnit, chunk_documents
+from spiyweb.nodes.propositions import Proposition, extract_propositions
 
 __all__ = [
     "Chunk",
     "DocumentInput",
+    "Proposition",
     "TextUnit",
     "chunk_documents",
+    "extract_propositions",
 ]
