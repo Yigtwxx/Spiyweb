@@ -343,10 +343,18 @@ class PropositionConfig:
             completion must not flood the layer. Provisional hand default.
         min_chars: Minimum character length of a kept proposition; shorter
             lines are fragments, not atomic facts. Provisional hand default.
+        tag_polarity: Ask the SAME extraction call to prefix negated facts
+            with `NEG:`, which become permanent negative-polarity atoms (D34).
+            This is the polarity-DETECTION answer to open question #11
+            (owner's 2026-08-15 choice: LLM piggyback - zero extra calls,
+            catches implicit negation that cue-word rules miss). `False`
+            selects the polarity-free prompt: the ablation switch, and the
+            byte-identical pre-#11 behaviour.
     """
 
     max_per_chunk: int = 12
     min_chars: int = 15
+    tag_polarity: bool = True
 
     def __post_init__(self) -> None:
         if self.max_per_chunk < 1:
@@ -595,6 +603,76 @@ class NLIEdgeConfig:
     def __post_init__(self) -> None:
         if not 0.0 < self.contradiction_threshold <= 1.0:
             raise ValueError("contradiction_threshold must lie in (0, 1]")
+
+
+@dataclass(frozen=True)
+class NLIModelConfig:
+    """Settings of the real NLI model wrapper (`spiyweb/nli.py`).
+
+    The model answers open question #10 (owner's 2026-08-15 choice): a small
+    multilingual DeBERTa fine-tuned on XNLI + 2.7M NLI pairs - the strongest
+    model of its size class, and it fits an 8 GB GPU with room to spare. The
+    wrapper lives OUTSIDE `core/` and behind the `NLIModel` Protocol, so the
+    choice stays a config value, never an import.
+
+    Attributes:
+        model_name: Hugging Face id of the sequence-classification NLI model.
+            The wrapper locates the contradiction class through the model's
+            own `id2label`, so any 3-way NLI head works here.
+        batch_size: Pairs scored per forward pass. Provisional hand default
+            sized for an 8 GB GPU; raise it on bigger hardware.
+        max_length: Token truncation bound per (premise, hypothesis) pair.
+            Propositions are short by construction; chunks get truncated with
+            the documented blur.
+        device: Explicit torch device, or `None` for the fixed resolution
+            order CUDA -> MPS -> CPU.
+    """
+
+    model_name: str = "MoritzLaurer/mDeBERTa-v3-base-xnli-multilingual-nli-2mil7"
+    batch_size: int = 16
+    max_length: int = 512
+    device: str | None = None
+
+    def __post_init__(self) -> None:
+        if not self.model_name:
+            raise ValueError("model_name must be non-empty")
+        if self.batch_size < 1:
+            raise ValueError("batch_size must be at least 1")
+        if self.max_length < 8:
+            raise ValueError("max_length must be at least 8")
+
+
+@dataclass(frozen=True)
+class NLICandidateConfig:
+    """Candidate-pair selection for index-time NLI (`evaluation/index.py`).
+
+    Contradiction is only worth scoring between texts that talk about the
+    same thing, so candidates are the high-cosine pairs of the corpus - the
+    proposition layer when the index has one (contradiction is sharp on
+    propositions), the chunk layer otherwise (documented blur, D26). All
+    values are provisional hand defaults pending the #10 measurement.
+
+    Attributes:
+        top_k: Neighbours considered per node when pairing (union kNN).
+        min_similarity: Cosine floor a pair must clear to become a candidate.
+            High on purpose: NLI cost scales with the candidate count, and
+            low-similarity pairs contradict by talking past each other.
+        max_pairs: Hard cap on scored pairs - the overflow guard that keeps a
+            dense corpus from turning the NLI stage into an open-ended bill.
+            Highest-similarity pairs win the cut.
+    """
+
+    top_k: int = 5
+    min_similarity: float = 0.80
+    max_pairs: int = 20000
+
+    def __post_init__(self) -> None:
+        if self.top_k < 1:
+            raise ValueError("top_k must be at least 1")
+        if not 0.0 <= self.min_similarity < 1.0:
+            raise ValueError("min_similarity must lie in [0, 1)")
+        if self.max_pairs < 1:
+            raise ValueError("max_pairs must be at least 1")
 
 
 @dataclass(frozen=True)
