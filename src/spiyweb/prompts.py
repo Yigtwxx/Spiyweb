@@ -33,6 +33,23 @@ Text:
 {text}
 """
 
+PROPOSITION_EXTRACTION_POLARITY_PROMPT = """\
+Extract the atomic factual propositions stated in the following text.
+
+Rules:
+- Output ONE proposition per line.
+- Each proposition is a single, self-contained factual sentence.
+- Resolve pronouns: name the actual person, place or thing they refer to.
+- If a proposition states that something is NOT the case (a denial, an
+  absence, a discontinuation), start that line with exactly "NEG: " and then
+  the proposition.
+- Do not add facts the text does not state. No commentary, no numbering.
+- If the text states no facts, output nothing.
+
+Text:
+{text}
+"""
+
 QUERY_DECOMPOSITION_PROMPT = """\
 Split the question into the SMALLEST number of search queries that together
 cover every fact it needs. Most questions need exactly 2; use 3 or 4 ONLY if
@@ -54,10 +71,20 @@ film Avatar studio
 studio that released Avatar owner company
 founder of the company that owns the Avatar studio
 
+Question: Which film has the director who was born earlier, Silver Harvest or The Glass Orchard?
+Queries:
+film Silver Harvest director
+director of Silver Harvest birth date
+film The Glass Orchard director
+director of The Glass Orchard birth date
+
 Rules:
 - One search query per line, nothing else.
 - Each query is self-contained keywords naming the concrete entities,
   works, places or relations it asks about.
+- A comparison between facts DERIVED from two entities (their directors'
+  birth dates, their countries' populations, ...) needs the full chain for
+  EACH side - one query per fact, usually 4 in total.
 - Do not number the lines. Do not answer the question.
 
 Question: {question}
