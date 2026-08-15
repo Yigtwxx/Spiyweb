@@ -135,3 +135,40 @@ def test_unusable_seeds_are_rejected(seeds: dict[str, float]) -> None:
     graph = Graph.from_edges([("A", "B", 1.0)])
     with pytest.raises(ValueError):
         propagate(graph, seeds)
+
+
+def test_split_alpha_one_matches_the_canonical_trace(
+    canonical_result: PropagationResult,
+) -> None:
+    """`split_alpha=1.0` written out explicitly is the documented behaviour."""
+    graph = Graph.from_edges(CANONICAL_EDGES)
+    explicit = propagate(graph, CANONICAL_SEEDS, PropagationConfig(split_alpha=1.0))
+    assert explicit.ranked() == canonical_result.ranked()
+
+
+def test_split_alpha_sharpens_the_neighbour_split() -> None:
+    """With alpha=2 a 2:1 weight ratio becomes a 4:1 energy ratio."""
+    graph = Graph.from_edges([("Q", "strong", 0.8), ("Q", "weak", 0.4)])
+    config = PropagationConfig(threshold_ratio=0.0, split_alpha=2.0)
+    result = propagate(graph, {"Q": 1.0}, config)
+    forwarded = 10.0 * 0.60
+    strong = result.energy_of("strong")
+    weak = result.energy_of("weak")
+    assert strong == pytest.approx(forwarded * 0.64 / 0.80)
+    assert weak == pytest.approx(forwarded * 0.16 / 0.80)
+    assert strong / weak == pytest.approx(4.0)
+
+
+def test_split_alpha_does_not_change_the_forwarded_total() -> None:
+    """Sharpening reshapes shares; it must never create or destroy energy."""
+    graph = Graph.from_edges([("Q", "a", 0.9), ("Q", "b", 0.5), ("Q", "c", 0.2)])
+    config = PropagationConfig(threshold_ratio=0.0, split_alpha=3.0)
+    result = propagate(graph, {"Q": 1.0}, config)
+    arrived = sum(result.energy_of(node) for node in ("a", "b", "c"))
+    assert arrived == pytest.approx(10.0 * 0.60)
+
+
+@pytest.mark.parametrize("alpha", [0.0, -1.0])
+def test_non_positive_split_alpha_is_rejected(alpha: float) -> None:
+    with pytest.raises(ValueError):
+        PropagationConfig(split_alpha=alpha)
