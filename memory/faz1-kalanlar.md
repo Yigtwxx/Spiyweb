@@ -15,8 +15,8 @@ gerçekten kalan işi gösterir.
 uyulur). Projeyi bilinen graph-RAG'lerden ayıran iddialar bunlar; kanıtlanmazsa
 proje "iyi uygulanmış bilinen fikirler" olarak kalır:
 
-- **A1 — Dedup→oy FAYDA kanıtı: KANITLANDI (2026-08-14, V0)** — bkz. "Bitmiş
-  sayılanlar". Kalan kuyruk: V1 parafraz doğrulaması (aşağıda madde 1b).
+- **A1 — Dedup→oy FAYDA kanıtı: TAMAMEN KANITLANDI (V0 2026-08-14 + V1
+  parafraz 2026-08-15)** — bkz. "Bitmiş sayılanlar". Kuyruk kalmadı.
 - **A2 — Çelişki mekaniği: KÜTÜPHANEDE (2026-08-14)** — bkz. "Bitmiş
   sayılanlar"; kalan kuyruğu aşağıda madde 1.
 - **A3 — Negatif tohum: KÜTÜPHANEDE (2026-08-14)** — bkz. "Bitmiş sayılanlar".
@@ -32,14 +32,20 @@ katman, budama, termal hafıza, D34 atomları ve önerme katmanı+kütle kodu
 
 ## Kalanlar
 
-1. **Çelişki — kalan kuyruk:** gerçek NLI model sarmalayıcısı (model seçimi =
-   açık soru #10) + `evaluation/index.py`'ye index-time NLI aşaması (aday çift
-   üretimi: yüksek benzerlikli çiftler) + uygun corpus'ta ölçüm (MuSiQue'de
-   doğal çelişki yok — dedup'la aynı durum).
-1b. **A1 kuyruğu — V1 parafraz doğrulaması:** V0 (birebir kopya) kanıtı geldi;
-   gerçekçi tekrar = LLM parafraz kopyaları (cos ~.90-.97 bandı) ile aynı
-   protokolün tekrarı. Ön-kayıtlı kapı sağlandı, sahibi onayı bekliyor
-   (~3-5 saat GPU: üretim + embed + zincir).
+0. **Üçüncü dataset mühür KOŞUSU (HotpotQA).** KOD BİTTİ (2026-08-15:
+   `load_hotpotqa` — 2wiki ile paylaşılan gövde `_load_hotpot_family`,
+   tip-önekli id'ler, aynı köprü yaklaşımı; `--dataset hotpotqa`, HF aynası
+   `HOTPOTQA_DEV_URL` — CMU sunucusu http ve dengesiz). Kalan yalnız KOŞU:
+   kazanan config AYARSIZ, ~2-3 saat GPU kesintisiz; MuSiQue hop-4'teki
+   t13 bedeli (−.031) burada da izlenir.
+1. **Çelişki — kalan kuyruk: yalnız ÖLÇÜM.** Kod bitti (2026-08-15):
+   gerçek sarmalayıcı `nli.py` (mDeBERTa-v3 XNLI — sahibi seçimi #10,
+   `spiyweb[nli]` extra, contradiction sınıfı id2label'dan çözülür) +
+   index `--nli` aşaması (aday = yüksek-cosine çiftler, önerme katmanı
+   varsa önermeler; `edges_nli.json`; sayım model koşmadan loglanır) +
+   `load_nli_edges` → evaluate'te `conflict_adjacency` ile otomatik
+   bağlanır (artifact varsa mekanizma açılır). Ölçüm uygun corpus ister
+   (MuSiQue'de doğal çelişki yok — dedup'la aynı durum).
 2. **Sorgu-anı hız sorunu — ÇÖZÜLMEDİ (2026-08-14, sahibi: ileride dönülecek).**
    Kazanan akış ~2,6 LLM çağrısı/soru → ~5-8 sn gecikme; en sert benimseme
    bariyeri. **Denenen ve ÇALIŞMAYAN:** tırmanma router'ı ("önce ucuz düz web,
@@ -187,6 +193,24 @@ büyür (0: −.002 | %10: +.007 | %40: +.027). CLAUDE.md §2.3'e "Seed twins"
 kuralı eklendi. **356 test** (353+3 skip), ruff yeşil, commit yok.
 Script'ler scratchpad: `a1_build_corpus.py`, `grid_a1.py`, `a1_stats.py`,
 `a1_diag.py`; hücre çıktıları `a1_d{0,10,40}_{off,f95,f90}*.json`.
+
+**Dedup→oy FAYDA kanıtı — A1 V1 parafraz (2026-08-15 gecesi):** V0'ın
+gerçekçi tekrarı: aynı ön-kayıtlı kopya kümeleri (seed 42, doz %10/%40),
+kopya İÇERİĞİ llama3.1:8b parafrazı (4773 üretim, 19 parse fallback %0.4;
+başlık+metin yeniden yazılır, gerçek embed + spaCy varlık yeniden çıkarımı).
+**Kaynak-kopya cosine: ort .949, p50 .956 — yalnız %58'i ≥.95, %95'i ≥.90**;
+yani parafrazlar tam floor sınırında yaşıyor. **Sonuç: fayda GERÇEKÇİ
+tekrarda da kanıtlandı** — doz %40 f95−off **+.0128 CI [+.0069,+.0190]
+P=.000** (.4907→.5035), f90−off +.0150 CI [+.0069,+.0230] P=.000; ama
+**f90−f95 +.0022 CI [−.0045,+.0087] ANLAMSIZ** → floor'u gevşetmek 2×
+bastırma (18.6k vs 8.2k; 1603 gold kopyası dahil) getirse de S@5'e
+çevrilmiyor; V0'daki f90 temiz-corpus zararıyla birlikte **floor .95
+varsayılan KALIR**. Doz %10 her varyantta nötr (V0 ile tutarlı: düşük dozda
+sinyal küçük). Oy ayrışması korunur: f95'te gold ort 2.92 vs diğer 2.29.
+Etki V0'ın (~+.027) yaklaşık yarısı — beklenen: parafrazın ~%42'si dedup
+görüş alanı dışında. Üretim 25/5 dk termal duty-cycle ile koştu (sahibi
+kararı). Script'ler: `a1_paraphrase.py`, `a1p_build_corpus.py`; hücreler
+`a1p_d{10,40}_{off,f95,f90}*.json`, corpus makbuzları `a1p_dose*/a1_meta.json`.
 
 Çekirdek graf+yayılım, dedup→oy (tur 11), renkli çok tohum + ardışık zincir
 (tur 12 kazananı kütüphanede), semantic/entity/structural kenarlar, hibrit
