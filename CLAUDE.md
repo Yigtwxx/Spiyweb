@@ -66,11 +66,11 @@ knobs. Full rationale for each lives in `memory/`.
 | Duplicate threshold | **Adaptive**, computed from the active set's similarity distribution — the computed value must be visible in the UI |
 | Vote granularity | Per **document/source**, never per chunk |
 | Contradiction | Modelled as **negative charge** — opposing atoms damp each other instead of reinforcing |
-| Contradiction detection | **Index-time NLI** — a small multilingual NLI model runs inside `edges/` and emits negative edges; `core/` only consumes pre-marked data |
+| Contradiction detection | **Index-time NLI** — a small multilingual NLI model runs inside `edges/` and emits negative edges; `core/` only consumes pre-marked data. Landed 2026-08-15: real wrapper `nli.py` (mDeBERTa-v3 XNLI, provisional #10 choice), high-cosine candidate pairing + `edges_nli.json` stage in the harness (`--nli`, default OFF pending measurement) |
 | Contradiction surfacing | The library emits a **template-built, LLM-free question with options** for the user |
 | No answer given | **Both sides enter the context, flagged as disputed.** Never silently pick a winner |
 | Negative requests | "excluding X", "without Y" → **energy-absorbing negative seed**, not a post-filter |
-| Negative knowledge | Negated propositions ("X does not…") become permanently **negative-polarity atoms**: they absorb the energy of queries asserting the opposite and emit a "corpus disputes this" warning. Implemented 2026-08-14 (`core/polarity.py` + `PolarityConfig`, proportional absorption, full by default) after the first Phase 1 measurement, as planned; polarity DETECTION at index time stays open (question #11) |
+| Negative knowledge | Negated propositions ("X does not…") become permanently **negative-polarity atoms**: they absorb the energy of queries asserting the opposite and emit a "corpus disputes this" warning. Implemented 2026-08-14 (`core/polarity.py` + `PolarityConfig`, proportional absorption, full by default) after the first Phase 1 measurement, as planned. Detection landed 2026-08-15 (#11, owner's choice): the proposition-extraction call itself tags negated facts with a `NEG:` prefix — zero extra calls; `PropositionConfig.tag_polarity` is the ablation switch |
 | Supersession | NLI contradiction + ordered timestamps on the same subject = **update, not conflict** — older atom damped, newer marked current, no user question emitted. Freshness tie-break stays separate: supersession requires NLI evidence, not mere recency. Implementation in Phase 2 |
 
 ### 2.4 Query shaping
@@ -155,6 +155,7 @@ src/spiyweb/
 │   └── propositions.py   # proposition-level nodes (LLM extraction at index time)
 ├── entities.py           # hybrid entity extraction: spaCy bulk, LLM for ambiguous chunks
 ├── embedding.py          # e5 wrapper: role prefixes baked in, device CUDA -> MPS -> CPU
+├── nli.py                # real NLI wrapper (mDeBERTa XNLI): lazy deps, spiyweb[nli] extra
 ├── llm.py                # LLM provider abstraction: Ollama default, free APIs optional
 ├── prompts.py            # prompt templates, kept apart from pipeline logic
 ├── profiles.py           # precise / explore / compare propagation profiles
