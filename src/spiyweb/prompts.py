@@ -33,6 +33,16 @@ Text:
 {text}
 """
 
+# Tightened 2026-08-16 after the first label audit (open question #11). The
+# first version produced 142 tags over 26.058 propositions and only 46.5% of
+# them held up: 76 carried no negation at all, and some INVENTED a denial the
+# source never made ("The series was not canceled on January 10, 2012." for a
+# passage saying the series PREMIERED that day). Recall was the other half of
+# the failure - 532 untagged propositions carried a negation cue, roughly 8x
+# the tagged set. A negative-polarity atom DESTROYS energy, so a wrong tag is
+# worse than no tag; hence the two explicit prohibitions plus the implicit-
+# negation examples that go after the misses. The measurement that rejected
+# the first version is in `memory/open-questions.md` #11.
 PROPOSITION_EXTRACTION_POLARITY_PROMPT = """\
 Extract the atomic factual propositions stated in the following text.
 
@@ -40,9 +50,16 @@ Rules:
 - Output ONE proposition per line.
 - Each proposition is a single, self-contained factual sentence.
 - Resolve pronouns: name the actual person, place or thing they refer to.
-- If a proposition states that something is NOT the case (a denial, an
-  absence, a discontinuation), start that line with exactly "NEG: " and then
-  the proposition.
+- If a proposition states that something is NOT the case, start that line with
+  exactly "NEG: " and then the proposition. This covers explicit denials
+  ("did not", "never", "no longer", "was not") and implicit ones ("failed to
+  win", "remains unfinished", "without a successor", "the plan was abandoned").
+- Only tag what the text itself denies. Never turn a positive statement into a
+  denial of something else: if the text says an event happened in 1917, do NOT
+  write that it did not happen in 1918. A plain positive fact never gets the
+  prefix.
+- If you cannot point to the words in the text that do the denying, the line
+  is not a NEG line.
 - Do not add facts the text does not state. No commentary, no numbering.
 - If the text states no facts, output nothing.
 
