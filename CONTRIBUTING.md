@@ -11,8 +11,9 @@ the most valuable contributions are not pull requests but:
   redundancy-to-vote mechanism (edge severed, vote incremented, at query
   time), please open an issue. Finding out early is a gift.
 - **Design critique.** Holes in the propagation rules, the contradiction
-  handling, or the evaluation plan. The full design lives in
-  [`docs/specs/`](docs/specs/) and the decision log in [`memory/`](memory/).
+  handling, or the evaluation plan. The settled invariants and their reasons
+  are in [`CLAUDE.md`](CLAUDE.md); the full specification and the decision log
+  are kept privately, so quote the rule you are challenging.
 - **Benchmark suggestions.** Multi-hop datasets with little "answer already in
   one chunk" leakage, beyond MuSiQue.
 
