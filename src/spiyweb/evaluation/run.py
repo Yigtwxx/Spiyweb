@@ -18,12 +18,14 @@ import argparse
 import json
 import re
 from collections import Counter
+from dataclasses import asdict
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from spiyweb.config import (
     ColoredRetrievalConfig,
     ConflictConfig,
+    DedupConfig,
     EvaluationConfig,
     IterativeBaselineConfig,
     LayerWeights,
@@ -48,10 +50,12 @@ from spiyweb.evaluation.index import (
     build_index,
     load_graph,
     load_nli_edges,
+    load_similarity,
     load_store,
 )
 from spiyweb.evaluation.metrics import (
     bridge_recall_at_k,
+    nodes_for_k_passages,
     novelty_at_k,
     support_recall_at_k,
     weighted_objective,
@@ -61,15 +65,25 @@ from spiyweb.retrieve import retrieve, retrieve_colored
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence
 
+    from spiyweb.core.dedup import SimilarityFn
     from spiyweb.core.graph import Graph
     from spiyweb.embedding import Embedder
     from spiyweb.evaluation.datasets import MusiqueDataset, MusiqueQuestion
     from spiyweb.llm import LLMClient
-    from spiyweb.retrieve import SeedSource
+    from spiyweb.retrieve import ColoredRetrievalResult, SeedSource
 
 # Published reference, never reproduced here and never a gate (D29).
 # Source: HippoRAG (ColBERTv2), arXiv:2405.14831, Table 2, MuSiQue column.
 HIPPORAG_REFERENCE = {"R@2": 0.409, "R@5": 0.519}
+
+DENSE_OVERFETCH = 5
+"""How much deeper the dense side is fetched under the passage window.
+
+A dense top-10 on a two-layer index can be ten propositions of three
+passages; asking for `max_k` alone would hand the window nothing to work
+with. Five times is generous against the measured worst case (ten stored
+nodes carried 3.81 distinct passages) and costs nothing - the store search
+is exact and in memory."""
 
 
 def evaluate_questions(
@@ -85,7 +99,10 @@ def evaluate_questions(
     eval_config: EvaluationConfig | None = None,
     weights: LayerWeights | None = None,
     web_mode: str = "colored",
+    iterative: bool = True,
     conflict: ConflictConfig | None = None,
+    dedup: DedupConfig | None = None,
+    distinct_passages: bool = False,
     log: Callable[[str], None] = print,
 ) -> None:
     """Run all systems over every question; write per-query records + results.
@@ -98,6 +115,12 @@ def evaluate_questions(
     too. `decomp_llm` is the decomposition model's client (tour-12 winner:
     qwen3.5:9b); when omitted, `llm` decomposes as well.
 
+    `iterative=False` drops ONLY the baseline and leaves the coloured web
+    intact. Dropping the baseline used to mean passing `llm=None`, which also
+    silently demoted the winner to the plain web - so a run meant to save the
+    baseline's ~4 calls per question measured a different system than the one
+    it named.
+
     The work is phased, not per-question: every LLM phase completes before
     the next embedding phase starts, so on an 8 GB GPU the LLM server and the
     embedder never fight over VRAM within a phase.
@@ -105,12 +128,34 @@ def evaluate_questions(
     `conflict` activates the contradiction mechanism (D14/D26) over the
     index's pre-marked negative edges (`edges_nli.json`); an index without
     that artifact contributes no edges, so passing a config is then a no-op.
+
+    `distinct_passages` stores a ranking down to the node that completes its
+    `max_k`-th distinct PASSAGE, instead of cutting at `max_k` nodes. On a
+    chunk-only index the two are identical; on a two-layer index they are
+    not, and the difference was measured on 2026-08-16: ten stored nodes
+    carried 3.81 distinct passages, so `passages_at_k` was scoring a
+    handicapped ranking and the coloured web lost .0118 CI [.0032,.0224] to
+    the cut alone. Default `False` keeps the sealed runs comparable.
+
+    `dedup` activates redundancy suppression (D6): the harness then also
+    builds the node-pair similarity `retrieve()` requires, since the
+    mechanism stays off unless BOTH arrive. Default `None` = off, which is
+    how every sealed number from 2026-08-14 onwards was produced - stated
+    here because "the config exists" was never the same as "the mechanism
+    ran", and the closing report has to say which one it means. Turning it on
+    changes what the web returns, so a run that enables it is not comparable
+    with the sealed ones.
     """
     if web_mode not in ("colored", "plain"):
         raise ValueError(f"web_mode {web_mode!r} must be 'colored' or 'plain'")
     cfg = eval_config if eval_config is not None else EvaluationConfig()
     store = load_store(paths)
     graph = load_graph(paths, weights)
+    # Built only when asked: the matrix is the whole corpus in memory, and a
+    # run that does not dedup has no use for it.
+    similarity = load_similarity(paths) if dedup is not None else None
+    if dedup is not None:
+        log("dedup on: near-duplicate neighbours lose their edge and gain a vote")
     negative: dict[str, dict[str, float]] | None = None
     if conflict is not None:
         marked = load_nli_edges(paths)
@@ -127,8 +172,19 @@ def evaluate_questions(
     question_vectors = embedder.embed_queries(
         [question.question for question in questions]
     )
+
+    # With the passage window on, a ranking is stored down to the node that
+    # completes its `max_k`-th distinct passage instead of being cut at
+    # `max_k` nodes. The dense side has to be fetched deeper for the same
+    # reason - a two-layer index answers a top-10 request with propositions.
+    def window(ranked: list[str]) -> list[str]:
+        if not distinct_passages:
+            return ranked[:max_k]
+        return nodes_for_k_passages(ranked, max_k)
+
+    dense_depth = max_k * DENSE_OVERFETCH if distinct_passages else max_k
     dense_of = {
-        question.id: topk_retrieve(vector, store, max_k)
+        question.id: window(topk_retrieve(vector, store, dense_depth))
         for question, vector in zip(questions, question_vectors, strict=True)
     }
 
@@ -149,8 +205,11 @@ def evaluate_questions(
             max_k=max_k,
             web_of=web_of,
             extras_of=web_extras_of,
+            window=window,
             negative=negative,
             conflict=conflict if negative is not None else None,
+            similarity=similarity,
+            dedup=dedup,
             log=log,
         )
     else:
@@ -160,13 +219,19 @@ def evaluate_questions(
                 store,
                 graph,
                 retrieval_config,
+                similarity=similarity,
+                dedup=dedup,
                 negative=negative,
                 conflict=conflict if negative is not None else None,
             )
-            web_of[question.id] = [node for node, _ in web_result.ranked()][:max_k]
+            web_of[question.id] = window([node for node, _ in web_result.ranked()])
             web_extras_of[question.id] = {
                 "stop_reason": web_result.propagation.stop_reason,
                 "hops_used": web_result.propagation.hops_used,
+                # Open question #4 needs the DISTANCE to the brake, not just
+                # whether it fired: `stop_reason` alone cannot say whether
+                # `max_nodes` was never approached or missed by one atom.
+                "n_activated": len(web_result.propagation.activations),
                 "seeds": dict(web_result.seeds),
             }
 
@@ -184,7 +249,7 @@ def evaluate_questions(
             "iterative_steps": None,
             "stopped_early": None,
         }
-        if llm is not None:
+        if llm is not None and iterative:
             trace = iterative_retrieve(
                 question.question,
                 embedder,
@@ -194,11 +259,15 @@ def evaluate_questions(
                 llm,
                 iterative_config,
             )
-            record["iterative"] = list(trace.ranked)[:max_k]
+            record["iterative"] = window(list(trace.ranked))
             record["iterative_steps"] = list(trace.steps)
             record["stopped_early"] = trace.stopped_early
         records.append(record)
-        if llm is not None and number % 100 == 0:
+        # Guarded on the same condition as the work it reports. It used to
+        # read `llm is not None`, so a run with the baseline switched off
+        # still announced "iterative baseline 200/200 questions" - a log line
+        # describing work that never happened.
+        if llm is not None and iterative and number % 100 == 0:
             log(f"iterative baseline {number}/{len(questions)} questions")
 
     paths.root.mkdir(parents=True, exist_ok=True)
@@ -207,6 +276,12 @@ def evaluate_questions(
             handle.write(json.dumps(record, ensure_ascii=False) + "\n")
 
     results = aggregate(records, cfg)
+    # Part of the receipt, not a detail: every number sealed between
+    # 2026-08-14 and 2026-08-16 was produced with this off, and nothing in
+    # the artifact said so. A run whose ledger omits the switch cannot be
+    # compared with one that has it.
+    results["dedup"] = asdict(dedup) if dedup is not None else None
+    results["distinct_passages"] = distinct_passages
     if colored_active:
         results["combo"] = _colored_receipt(ccfg)
         results["combo"]["llm_calls_per_question"] = round(
@@ -246,13 +321,30 @@ def _run_colored_web(
     max_k: int,
     web_of: dict[str, list[str]],
     extras_of: dict[str, dict[str, object]],
+    window: Callable[[list[str]], list[str]] | None = None,
     negative: Mapping[str, Mapping[str, float]] | None = None,
     conflict: ConflictConfig | None = None,
+    similarity: SimilarityFn | None = None,
+    dedup: DedupConfig | None = None,
+    on_result: Callable[[str, ColoredRetrievalResult], None] | None = None,
+    profile_for: Callable[[int], ColoredRetrievalConfig] | None = None,
     log: Callable[[str], None],
 ) -> int:
     """The coloured pipeline, phase by phase (decompose -> embed -> chain ->
     propagate); fills `web_of` and `extras_of` in place and returns the number
-    of intermediate-answer extraction calls made."""
+    of intermediate-answer extraction calls made.
+
+    `on_result` is a measurement seam: an ablation that needs the ENERGIES
+    rather than the order gets the shipped pipeline's own result object,
+    instead of rebuilding the chain in a script - a rebuilt chain is a
+    different system, and comparing against it would prove nothing.
+
+    `profile_for` is the second measurement seam: given a question's COLOUR
+    COUNT it returns the config that question propagates under (D13 profiles
+    chosen automatically instead of by the caller). It is consulted only for
+    the propagation call - decomposition and intermediate-answer extraction
+    keep using `config`, so every LLM prompt stays byte-identical and the
+    profile is the single thing that varies."""
     vector_of: dict[str, list[float]] = {}
 
     def embed_unique(texts: list[str]) -> None:
@@ -270,10 +362,17 @@ def _run_colored_web(
             # question anyway; extracting from a non-contact would be noise.
             return "", False
         top_node = max(seeds.items(), key=lambda item: item[1])[0]
+        # On a two-layer index the strongest contact can be a PROPOSITION
+        # (`d01024:0#p0`), and the dataset only knows passages - propositions
+        # live in their own artifact. A proposition stands for its parent
+        # passage everywhere else in the harness (that is the rule the metrics
+        # use), so it stands for it here too. Without the fold this raised
+        # `KeyError` and killed the run at the first proposition contact.
+        passage = top_node.split("#", 1)[0]
         answer = extract_intermediate_answer(
             llm,
-            dataset.titles[top_node],
-            dataset.texts[top_node],
+            dataset.titles[passage],
+            dataset.texts[passage],
             text,
             config.max_answer_words,
         )
@@ -351,19 +450,37 @@ def _run_colored_web(
             f"c{index}": vector_of[chained_text[(question.id, index)]]
             for index in range(len(subqueries[question.id]))
         }
+        active = config if profile_for is None else profile_for(len(colored_queries))
         result = retrieve_colored(
             colored_queries,
             store,
             graph,
-            config,
+            active,
+            similarity=similarity,
+            dedup=dedup,
             negative=negative,
             conflict=conflict,
         )
-        web_of[question.id] = [node for node, _ in result.ranked()][:max_k]
+        # Measurement seam: an ablation that needs the ENERGIES (not just the
+        # order) must see the shipped pipeline's own result, never a
+        # reconstruction of it - a rebuilt chain is a different system.
+        if on_result is not None:
+            on_result(question.id, result)
+        ranked_nodes = [node for node, _ in result.ranked()]
+        web_of[question.id] = (
+            window(ranked_nodes) if window is not None else ranked_nodes[:max_k]
+        )
         primary = result.colored.per_color[next(iter(result.seeds_by_color))]
         extras_of[question.id] = {
             "stop_reason": primary.stop_reason,
             "hops_used": result.confidence.hop_depth,
+            # `max_nodes` guards ONE propagation run, so the brake's distance
+            # is the widest colour, not the merged web (#4). Both are kept:
+            # the merged count is what reaches the context window.
+            "n_activated": result.confidence.node_count,
+            "n_activated_max_color": max(
+                len(per.activations) for per in result.colored.per_color.values()
+            ),
             "seeds": {
                 color: dict(seeds) for color, seeds in result.seeds_by_color.items()
             },
@@ -456,7 +573,32 @@ def aggregate(
         },
         "objective_by_hop": by_hop,
         "stop_reasons": dict(Counter(str(record["stop_reason"]) for record in records)),
+        # The brakes' headroom, not just whether they fired (#4). A run whose
+        # deepest query sits ON `max_hop` has passed without a margin, and
+        # `stop_reasons` alone would report that as a clean threshold stop.
+        "brake_headroom": _brake_headroom(records),
         "iterative_included": "iterative" in systems,
+    }
+
+
+def _brake_headroom(records: Sequence[Mapping[str, object]]) -> dict[str, object]:
+    """Deepest hop and widest web observed, for calibrating the safety caps.
+
+    Fields absent from older `per_query.jsonl` records are reported as
+    `None` rather than zero: "not recorded" and "never activated" are
+    different answers to open question #4.
+    """
+
+    def peak(field: str) -> int | None:
+        values = [
+            int(record[field]) for record in records if record.get(field) is not None
+        ]
+        return max(values) if values else None
+
+    return {
+        "max_hops_used": peak("hops_used"),
+        "max_activated": peak("n_activated"),
+        "max_activated_per_color": peak("n_activated_max_color"),
     }
 
 
@@ -493,6 +635,50 @@ def render_report(results: dict[str, object]) -> str:
     ]
     if not results["iterative_included"]:
         lines += ["", "The iterative baseline was skipped in this run."]
+
+    # Stated in every report, both ways round. Redundancy-to-vote is the
+    # project's most original claim, and for the whole 2026-08 campaign it
+    # was configured but never actually running here - a reader had no way
+    # to tell from the artifact. Absent key = an older run, which is exactly
+    # the case this line exists to make visible.
+    passages = results.get("distinct_passages", "unrecorded")
+    if passages == "unrecorded":
+        lines += [
+            "",
+            "Ranking window: NOT RECORDED - this run predates the "
+            "`--distinct-passages` switch, so rankings were cut at max_k "
+            "NODES.",
+        ]
+    else:
+        lines += [
+            "",
+            "Ranking window: "
+            + (
+                "max_k distinct PASSAGES (not comparable with runs cut at max_k nodes)."
+                if passages
+                else "max_k nodes, as every sealed run."
+            ),
+        ]
+
+    dedup = results.get("dedup", "unrecorded")
+    if dedup == "unrecorded":
+        lines += [
+            "",
+            "Duplicate suppression: NOT RECORDED - this run predates the "
+            "`--dedup` switch, so the mechanism was off.",
+        ]
+    elif dedup is None:
+        lines += [
+            "",
+            "Duplicate suppression (D6): OFF. Near-duplicate neighbours kept "
+            "their edges and cast no votes; comparable with the sealed runs.",
+        ]
+    else:
+        lines += [
+            "",
+            f"Duplicate suppression (D6): ON, {dedup}. Not comparable with "
+            "runs made before it was switched on.",
+        ]
 
     lines += [
         "",
@@ -607,8 +793,26 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument(
         "--skip-iterative",
         action="store_true",
-        help="skip the iterative baseline (e.g. when Ollama is down); "
-        "without an LLM the coloured web falls back to the plain one too",
+        help="skip the iterative baseline and nothing else - the coloured "
+        "web still runs. To run with no LLM at all (Ollama down), combine "
+        "it with --web plain",
+    )
+    parser.add_argument(
+        "--dedup",
+        action="store_true",
+        help="turn duplicate suppression ON (D6: a near-duplicate neighbour "
+        "loses its edge and the surviving idea gains a vote). OFF by default "
+        "because every sealed run was measured that way and switching it on "
+        "breaks comparability - not because the mechanism is optional. The "
+        "results ledger and the report state which way the run went",
+    )
+    parser.add_argument(
+        "--distinct-passages",
+        action="store_true",
+        help="store rankings down to the max_k-th distinct PASSAGE instead of "
+        "the max_k-th node. Only matters on a two-layer index, where the "
+        "node cut costs the web ~.012 S@5; OFF by default because turning it "
+        "on breaks comparability with the sealed runs",
     )
     parser.add_argument(
         "--web",
@@ -739,7 +943,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
 
     if args.stage in ("evaluate", "all"):
-        use_llm = not args.skip_iterative
+        # An LLM is needed for the coloured web AND for the baseline; it is
+        # only dispensable when neither is wanted. Tying it to
+        # `--skip-iterative` alone demoted the winner to the plain web behind
+        # the caller's back.
+        use_llm = args.web == "colored" or not args.skip_iterative
         decomp_llm = None
         if use_llm and args.web == "colored":
             decomp_llm = _real_llm(
@@ -753,12 +961,17 @@ def main(argv: Sequence[str] | None = None) -> int:
             embedder=embedder,
             llm=_real_llm(paths, args.llm_model) if use_llm else None,
             decomp_llm=decomp_llm,
+            iterative=not args.skip_iterative,
             colored_config=colored_cfg,
             eval_config=cfg,
             web_mode=args.web,
             # The conflict mechanism follows the artifact: an index carrying
             # edges_nli.json gets it, any other index is a no-op here.
             conflict=ConflictConfig() if paths.nli_json.exists() else None,
+            # Explicit, never inferred from an artifact: dedup changes what
+            # the web returns, so it may only be on because someone asked.
+            dedup=DedupConfig() if args.dedup else None,
+            distinct_passages=args.distinct_passages,
         )
 
     if args.stage in ("report", "all"):
