@@ -62,11 +62,13 @@ knobs. Full rationale for each lives in `memory/`.
 |---|---|
 | Redundancy | Near-duplicate neighbour: **edge weight → 0**, source idea's **vote count += 1** |
 | Seed twins | Duplicate CONTACTS never each hold a seed slot: suppressed at injection (`include_seeds`) and skipped at contact selection with **elastic refill** (`contact_overfetch`) — the freed slot goes to the next distinct idea, the survivor is voted. Measured 2026-08-14 (A1): injected twins were the dominant redundancy damage channel; neighbour-level suppression alone was statistically neutral |
+| Distinct sources | Two seed slots of ONE query part may never land on the same source (`DedupConfig.distinct_sources`, on by default, no-op on a single-layer index). Cosine is the right twin test for a copied passage and the wrong one for two propositions of the same passage — different sentences, never near-duplicates, yet the colour explores one passage instead of two |
 | Duplicate detection | **Dynamic**, at query time, among currently active nodes |
+| Harness note | The measurement harness keeps duplicate suppression **OFF by default** (`--dedup` turns it on) and every `results.json` records which way the run went. Every number sealed in the 2026-08 campaign was produced with the mechanism configured but never delivered — `retrieve()` needs BOTH a `DedupConfig` and a similarity backend, and the harness passed neither. Comparability is why the default did not change |
 | Duplicate threshold | **Adaptive**, computed from the active set's similarity distribution — the computed value must be visible in the UI |
 | Vote granularity | Per **document/source**, never per chunk |
 | Contradiction | Modelled as **negative charge** — opposing atoms damp each other instead of reinforcing |
-| Contradiction detection | **Index-time NLI** — a small multilingual NLI model runs inside `edges/` and emits negative edges; `core/` only consumes pre-marked data. Landed 2026-08-15: real wrapper `nli.py` (mDeBERTa-v3 XNLI, provisional #10 choice), high-cosine candidate pairing + `edges_nli.json` stage in the harness (`--nli`, default OFF pending measurement) |
+| Contradiction detection | **Index-time NLI** — a small multilingual NLI model runs inside `edges/` and emits negative edges; `core/` only consumes pre-marked data. Landed 2026-08-15: real wrapper `nli.py` (mDeBERTa-v3 XNLI, provisional #10 choice), high-cosine candidate pairing + `edges_nli.json` stage in the harness (`--nli`, default OFF pending measurement). Candidates must also **name the same subject** (2026-08-16, `shared_subject_pairs`): a rare-enough entity in the leading region of both texts. Cosine alone pairs same-kind different-entity texts and NLI then assumes they share a subject — the measured dominant false positive, and one no threshold separates. **Sensitivity measured 2026-08-16 on WikiContradict's 253 annotated real pairs: 31.6% caught at the shipped cut, 0% of the 63 same-passage ones (edges run between nodes, so an intra-passage contradiction is structurally invisible without the proposition layer), 9.5% end to end after the subject filter.** The mechanism is sound and the detector is not yet a working feature; better detection is Phase 2 work, not a threshold |
 | Contradiction surfacing | The library emits a **template-built, LLM-free question with options** for the user |
 | No answer given | **Both sides enter the context, flagged as disputed.** Never silently pick a winner |
 | Negative requests | "excluding X", "without Y" → **energy-absorbing negative seed**, not a post-filter |
@@ -95,6 +97,16 @@ knobs. Full rationale for each lives in `memory/`.
   LLM-free explanation of *why*: which entity clusters activated, where the
   missing bridge is, where the energy died, what kind of source is missing
 - **contradiction records** plus the ready-made user question
+
+The ranking is over NODES. On a two-layer index that is not the same thing as
+a ranking over passages, and the difference is measurable: the harness used to
+store the first `max_k` nodes, which on `musique_prop200` carried **3.81**
+distinct passages instead of five, costing the coloured web
+.0118 CI [.0032, .0224]. `--distinct-passages` stores down to the `max_k`-th
+distinct passage instead; it is OFF by default because switching it on breaks
+comparability with the sealed runs, and every `results.json` records which
+window the run used. Whether the ranking itself should aggregate a passage's
+propositions is a separate open question (`memory/on-kayit-onerme-enerji.md`).
 
 ### 2.6 Worked example (the canonical trace)
 
@@ -168,8 +180,10 @@ src/spiyweb/
 └── evaluation/           # renamed from eval/ — avoids shadowing the Python builtin
     ├── datasets.py       # MuSiQue loader: download, deterministic sample, dedup pool
     ├── metrics.py        # support recall, Novelty@k, bridge recall, weighted S@k
+    │                     #   + passage folding: propositions score as their parent
     ├── baseline.py       # plain top-k + IRCoT-style iterative retrieval
     ├── cache.py          # deterministic prompt-hash LLM cache (reproducible runs)
+    ├── stats.py          # paired bootstrap CI - the protocol's interval, one copy
     ├── index.py          # corpus -> vectors + entities + edge-layer artifacts
     └── run.py            # CLI: download / index / evaluate / report
 
@@ -227,7 +241,7 @@ Because the repo is public from day one, `CLAUDE.local.md` must stay in
 | Phase | Contents | Gate to leave it |
 |---|---|---|
 | **1. Simple working version** | Graph, propagation, dedup, conflicts, eval harness, dev UI | Beat both baselines on MuSiQue by a meaningful margin |
-| **2. Browser face (UI)** | Real UI on top of a stable public API — which means the library work happens here whether or not it is called a library. Also lands here: **supersession handling** and the **corpus-lint diagnostic mode** (orphan clusters, overloaded hubs, contradiction map, duplicate density) — the project's plan B if the multi-hop gain proves marginal | Real external demand |
+| **2. Browser face (UI)** | Real UI on top of a stable public API — which means the library work happens here whether or not it is called a library. Also lands here: **supersession handling**, **contradiction detection** (Phase 1 measured what ships: 31.6% recall on 253 annotated real pairs and 0% on same-passage ones — the mechanism is correct and the detector is not yet a working feature, and fixing it needs the proposition layer, not a threshold) and the **corpus-lint diagnostic mode** (orphan clusters, overloaded hubs, contradiction map, duplicate density) — the project's plan B if the multi-hop gain proves marginal | Real external demand |
 | **3. Framework / ecosystem** | Ingestion, LLM calls, orchestration; distributable as a skill | — |
 
 The order above is a **tentative revision** from the owner and may change. Two
@@ -294,5 +308,7 @@ All three must be clean before any change is considered done.
 - **Learned-layer drift.** Reinforcement without a forgetting factor collapses
   the graph toward whatever was asked most often.
 
-Full design: `docs/specs/2026-08-10-spiyweb-design.md`.
-Decision history and rationale: `memory/`.
+Full design (`docs/specs/2026-08-10-spiyweb-design.md`) and the decision log
+(`memory/`) are kept **locally and out of the repository** — this file is the
+public ground truth. A reference to either from here points at something a
+clone will not contain; that is deliberate, not a broken link.
