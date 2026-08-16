@@ -71,9 +71,17 @@ def _build_prompt(
     titles: Mapping[str, str],
     steps: Sequence[str],
 ) -> str:
+    # A two-layer index ranks proposition ids (`d00042:0#p3`) beside passage
+    # ids, and only passages have text here. A proposition stands for its
+    # parent passage, the same rule the metrics and the coloured chain use;
+    # duplicates collapse so one passage cannot fill the prompt three times.
+    passages: list[str] = []
+    for node_id in ranked_ids:
+        passage = node_id.split("#", 1)[0]
+        if passage not in passages:
+            passages.append(passage)
     paragraphs = "\n\n".join(
-        f"{titles.get(chunk_id, chunk_id)}: {texts[chunk_id]}"
-        for chunk_id in ranked_ids
+        f"{titles.get(chunk_id, chunk_id)}: {texts[chunk_id]}" for chunk_id in passages
     )
     reasoning = "\n".join(steps) if steps else "(nothing yet)"
     return QUERY_REWRITE_PROMPT.format(
