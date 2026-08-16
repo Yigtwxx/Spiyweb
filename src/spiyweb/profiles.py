@@ -9,8 +9,9 @@ tree: `as_retrieval` / `as_colored` overlay the three knobs onto a base
 config and preserve everything else it carries.
 
 The caller picks the profile - never an LLM, and never anything inside
-`core/`. The preset values below are provisional hand defaults (open
-question #6), to be measured.
+`core/`. The preset values below are MEASURED directions, not hand guesses
+any more: see the 2026-08-16 note on the presets themselves (open question
+#6, plain path measured, coloured path still to confirm).
 """
 
 from __future__ import annotations
@@ -89,18 +90,47 @@ class Profile:
         )
 
 
-PRECISE = Profile(name="precise", damping=0.45, threshold_ratio=0.25, seed_width=3)
-"""Small, fast-dying ball: forwards little, stops early, touches few atoms."""
+# All three thresholds are .01, and that equality is the measurement's
+# verdict, not an oversight. The 2026-08-14 hand values (.25 / .05 / .10)
+# were measured on MuSiQue, 1000 questions, plain path, on 2026-08-16 and
+# REJECTED: at those ratios the activated set equalled `seed_width` in all
+# three profiles - the web never left hop 0, so a "profile" was just top-k
+# cut to a different width, and PRECISE additionally cost -.0341
+# CI [-.0400, -.0283]. Threshold turned out to be the DECIDING knob and the
+# measured winner's value is .01; the hand values sat 25x / 5x / 10x above
+# it. Held at .01, the remaining two knobs do carry the profile idea:
+# the precise direction (damping .45, width 3) moved .3100 -> .3497,
+# +.0396 CI [+.0284, +.0510]; explore was neutral and compare -.0015.
+# So the presets ship exactly the cells that were measured, and nothing is
+# invented to keep the three thresholds distinct. What is NOT yet measured:
+# the same overlay on the COLOURED path, where a profile changes which
+# passages get retrieved and therefore misses the intermediate-answer cache
+# (~30-50 min per cell). Open question #6 stays open on that half.
 
-EXPLORE = Profile(name="explore", damping=0.75, threshold_ratio=0.05, seed_width=8)
-"""Large, slow-dying ball: forwards most of its energy and keeps rolling."""
+PRECISE = Profile(name="precise", damping=0.45, threshold_ratio=0.01, seed_width=3)
+"""Small, fast-dying ball: forwards little and touches few atoms.
 
-COMPARE = Profile(name="compare", damping=0.60, threshold_ratio=0.10, seed_width=6)
+The measured winner among the three directions on MuSiQue's plain path
+(+.0396 over the base regime), which is worth noticing: MuSiQue is 100%
+multi-hop and the narrow ball still won - consistent with the coloured
+winner's per-colour `seed_width=2`.
+"""
+
+EXPLORE = Profile(name="explore", damping=0.75, threshold_ratio=0.01, seed_width=8)
+"""Large, slow-dying ball: forwards most of its energy and keeps rolling.
+
+Measured neutral against the base regime on MuSiQue - not a loss, and the
+reach it buys is real; it simply did not pay on a benchmark whose questions
+all have a definite answer.
+"""
+
+COMPARE = Profile(name="compare", damping=0.60, threshold_ratio=0.01, seed_width=6)
 """Two-sided question: wide enough contact to hold both compared regions.
 
 The natural pairing is the coloured multi-seed path (each side its own
 colour, the bridge is the answer); applied there via `as_colored`, remember
-the width is per colour.
+the width is per colour. Measured -.0015 on the plain path, i.e. flat - and
+the plain path is the wrong home for this profile anyway.
 """
 
 PROFILES: dict[str, Profile] = {
