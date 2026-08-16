@@ -26,7 +26,11 @@ dependencies = []
 
 [project.optional-dependencies]
 # Developer inspection tool, never a package dependency: pip install spiyweb[ui]
-ui = ["streamlit>=1.36"]
+# `store` is not optional here: the inspector reads vectors.npz for both the
+# seed search and the dedup similarity backend. `embed` stays out on purpose -
+# torch is a two-gigabyte dependency, and the corpus-atom query mode works
+# without it, so the tool is fully usable with `store` alone.
+ui = ["streamlit>=1.36", "spiyweb[store]"]
 # Heavy index-time dependencies stay granular on purpose: `dependencies = []`
 # is the packaging-level face of the core-purity rule. `index` is the union.
 store = ["numpy>=1.26", "faiss-cpu>=1.8"]
@@ -34,6 +38,10 @@ embed = ["sentence-transformers>=3.0"]
 entity = ["spacy>=3.7"]
 # Index-time NLI contradiction marking (D26): the real model wrapper only.
 nli = ["torch>=2.2", "transformers>=4.40"]
+# The browser face: a FastAPI process serving `web/`. Like `ui`, it lives in
+# the repository rather than in the wheel - `dependencies = []` is the rule
+# that keeps the propagation core free of all of this.
+web = ["fastapi>=0.115", "uvicorn[standard]>=0.30", "spiyweb[store]"]
 index = ["spiyweb[store]", "spiyweb[embed]", "spiyweb[entity]"]
 
 [project.urls]
@@ -49,7 +57,11 @@ packages = ["src/spiyweb"]
 [tool.ruff]
 line-length = 88
 target-version = "py311"
-src = ["src", "tests"]
+# `ui` and `server` join the first-party roots so isort keeps `graph_view`
+# and `server.*` out of the third-party block; the package itself still ships
+# only `src/spiyweb`.
+src = ["src", "tests", "ui", "server"]
+extend-exclude = ["web"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "ANN", "RUF"]
@@ -61,4 +73,8 @@ select = ["E", "F", "I", "UP", "B", "ANN", "RUF"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# `streamlit run ui/app.py` puts `ui/` on sys.path[0], so the inspector imports
+# `graph_view` by its bare name; pytest runs from the repo root and would not
+# find it. One canonical module name, both contexts, no `ui/__init__.py`.
+pythonpath = ["ui"]
 addopts = "-q"
