@@ -35,7 +35,7 @@ from spiyweb.core.negative import negative_field
 from spiyweb.core.propagate import propagate
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
+    from collections.abc import Callable, Mapping, Sequence
 
     from spiyweb.core.colors import ColoredResult
     from spiyweb.core.conflict import ConflictRecord
@@ -44,6 +44,9 @@ if TYPE_CHECKING:
     from spiyweb.core.negative import AbsorptionRecord
     from spiyweb.core.polarity import DisputeRecord
     from spiyweb.core.propagate import PropagationResult
+
+    SourceKeyFn = Callable[[str], str]
+    """Node id -> the source it belongs to; built by `_source_key`."""
 
 
 class SeedSource(Protocol):
@@ -201,7 +204,7 @@ def retrieve(
         _contact_depth(cfg.seed_width, cfg.contact_overfetch, similarity, dedup),
     )
     seeds, contact_suppressed, contact_tau = _select_contacts(
-        contacts, cfg.seed_width, similarity, dedup
+        contacts, cfg.seed_width, similarity, dedup, _source_key(graph, source_of)
     )
     if not seeds:
         raise ValueError(
@@ -241,10 +244,34 @@ def _contact_depth(
     similarity: SimilarityFn | None,
     dedup: DedupConfig | None,
 ) -> int:
-    """How deep to search: overfetched only when the refill can actually run."""
-    if similarity is None or dedup is None or not dedup.enabled:
+    """How deep to search: overfetched only when the refill can actually run.
+
+    Two refill rules can trigger it - the cosine twin test needs a similarity
+    backend, the source test does not - so the depth follows whichever is
+    live. Overfetching with neither would just cost index reads.
+    """
+    if dedup is None or not dedup.enabled:
+        return width
+    if similarity is None and not dedup.distinct_sources:
         return width
     return width * overfetch
+
+
+def _source_key(graph: Graph, source_of: Mapping[str, str] | None) -> SourceKeyFn:
+    """Node -> the source it belongs to; caller's map wins, then the graph.
+
+    A proposition inherits its parent passage's `source_id`, so reading the
+    registry gives "same passage" without teaching retrieval the `{chunk}#p{n}`
+    id convention. A node the graph does not know stands for itself.
+    """
+
+    def key(node: str) -> str:
+        if source_of is not None and node in source_of:
+            return source_of[node]
+        data = graph.node(node)
+        return data.source_id if data is not None else node
+
+    return key
 
 
 def _select_contacts(
@@ -252,30 +279,57 @@ def _select_contacts(
     width: int,
     similarity: SimilarityFn | None,
     dedup: DedupConfig | None,
+    source_key: SourceKeyFn | None = None,
 ) -> tuple[dict[str, float], dict[str, str], float | None]:
     """Fill the seed slots with the first DISTINCT positive contacts.
 
     The elastic refill (2026-08-14 A1 decision): a contact that duplicates an
     already selected one is skipped - it becomes a vote, and its slot goes to
     the next distinct contact, so a duplicated corpus cannot halve the number
-    of ideas the web starts from. With dedup off (or no similarity backend)
-    this reduces exactly to "top `width` positive contacts". The adaptive cut
-    is computed over the positive candidate list and returned for the result
-    ledger; a duplicate skipped after the slots are already full is not
+    of ideas the web starts from. With dedup off (or with neither refill rule
+    live) this reduces exactly to "top `width` positive contacts". The adaptive
+    cut is computed over the positive candidate list and returned for the
+    result ledger; a duplicate skipped after the slots are already full is not
     examined and not voted (the scan stops with the slots).
+
+    "Distinct" is two tests, not one. The cosine test catches a copied
+    passage. The SOURCE test (`DedupConfig.distinct_sources`) catches what
+    cosine structurally cannot: two propositions of the same passage are
+    different sentences, so they are never near-duplicates, yet a query part
+    that seeds both explores one passage instead of two. Both tests end in the
+    same place - skipped, voted, slot refilled - because they are the same
+    rule about the same damage.
     """
     positive = [(node, score) for node, score in contacts if score > 0.0]
-    if similarity is None or dedup is None or not dedup.enabled:
+    if dedup is None or not dedup.enabled:
         return dict(positive[:width]), {}, None
-    tau = adaptive_threshold([node for node, _ in positive], similarity, dedup)
+    by_cosine = similarity is not None
+    by_source = dedup.distinct_sources and source_key is not None
+    if not by_cosine and not by_source:
+        return dict(positive[:width]), {}, None
+
+    tau: float | None = None
+    if by_cosine:
+        assert similarity is not None
+        tau = adaptive_threshold([node for node, _ in positive], similarity, dedup)
     kept: dict[str, float] = {}
     suppressed: dict[str, str] = {}
+    holder_of: dict[str, str] = {}  # source -> the seed already holding it
     for node, score in positive:
         if len(kept) == width:
             break
-        survivor = find_survivor(node, list(kept), similarity, tau)
+        survivor: str | None = None
+        if by_cosine:
+            assert similarity is not None and tau is not None
+            survivor = find_survivor(node, list(kept), similarity, tau)
+        if survivor is None and by_source:
+            assert source_key is not None
+            survivor = holder_of.get(source_key(node))
         if survivor is None:
             kept[node] = score
+            if by_source:
+                assert source_key is not None
+                holder_of[source_key(node)] = node
         else:
             suppressed[node] = survivor
     return kept, suppressed, tau
@@ -446,14 +500,18 @@ def retrieve_colored(
     cfg = config if config is not None else ColoredRetrievalConfig()
 
     depth = _contact_depth(cfg.seed_width, cfg.contact_overfetch, similarity, dedup)
+    source_key = _source_key(graph, source_of)
     seeds_by_color: dict[str, dict[str, float]] = {}
     contact_suppressed: dict[str, dict[str, str]] = {}
     contact_taus: dict[str, float] = {}
     contact_votes: dict[str, int] = {}
     for position, (color, embedding) in enumerate(colored_queries.items()):
         contacts = index.search(embedding, depth)
+        # Per COLOUR, deliberately: two colours touching one passage is a
+        # legitimate overlap between sub-questions, and the measured damage
+        # was inside a single colour's slots.
         seeds, suppressed_here, tau_here = _select_contacts(
-            contacts, cfg.seed_width, similarity, dedup
+            contacts, cfg.seed_width, similarity, dedup, source_key
         )
         if not seeds:
             if position == 0:
