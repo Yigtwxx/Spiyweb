@@ -1,6 +1,13 @@
 # Local, personal notes - never published
 CLAUDE.local.md
 
+# Design specification and decision log: kept locally from 2026-08-16.
+# CLAUDE.md is the public ground truth; these carry the reasoning, the
+# rejected alternatives and the raw measurement history behind it.
+memory/
+docs/
+Stats/
+
 # Secrets
 .env
 .env.*
@@ -23,4 +30,8 @@ data/
 *.npy
 runs/
 
-Stats/
+
+
+# Browser UI (npm world; never part of the Python package)
+web/node_modules/
+web/dist/
