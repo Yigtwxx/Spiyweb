@@ -350,11 +350,27 @@ class PropositionConfig:
             catches implicit negation that cue-word rules miss). `False`
             selects the polarity-free prompt: the ablation switch, and the
             byte-identical pre-#11 behaviour.
+
+            **Default flipped to `False` on 2026-08-16, and the flip is the
+            measurement's verdict, not a preference.** Both prompt versions
+            were audited on the same 3.336-passage corpus. The first tagged
+            142 of 26.058 propositions and only 47.2% carried an actual
+            negation cue, while 623 untagged ones did - and the cue proxy
+            cannot even see the worse failure the dumps showed by eye, a
+            model inventing denials the source never made ("the series was
+            not canceled due to audience demand"). Tightening the prompt to
+            forbid that fixed precision (75.0%) by nearly switching tagging
+            off: 4 tags in 29.566 propositions, misses now 160x the catches.
+            Neither operating point is usable, so the piggyback answer to #11
+            is refuted in both directions: polarity DETECTION needs its own
+            pass, not a clause inside the extraction prompt. The negative-atom
+            MECHANISM (`core/polarity.py`) is unaffected - it consumes labels
+            and never produces them.
     """
 
     max_per_chunk: int = 12
     min_chars: int = 15
-    tag_polarity: bool = True
+    tag_polarity: bool = False
 
     def __post_init__(self) -> None:
         if self.max_per_chunk < 1:
@@ -377,8 +393,15 @@ class PropagationConfig:
             below `threshold_ratio * seed_energy` dies there. Relative because
             thermal memory and query profiles both change the injected total.
         max_hop: Hard overflow guard on propagation depth. The threshold is the
-            real stop condition; this only prevents surprises. Provisional
-            default, to be revisited after the first measurement.
+            real stop condition; this only prevents surprises. Raised from 6
+            to 8 on 2026-08-16 after the depth data came in: across four
+            sealed 1000-question runs every query stopped on `threshold`, but
+            the deepest observed hop was 6 - equal to the cap itself (2Wiki,
+            2 queries). "The brake never fired" was true and yet there was no
+            margin left, and a deeper corpus would have bound it silently.
+            Raising it costs nothing, because the threshold stops first in
+            every measured run; what it buys is headroom between the observed
+            depth and the ceiling.
         max_nodes: Hard overflow guard on the size of the activated set. Same
             status as `max_hop`: safety brake, not a `top-k` in disguise.
         split_alpha: Exponent applied to edge weights when a node splits its
@@ -397,7 +420,7 @@ class PropagationConfig:
     seed_energy: float = 10.0
     damping: float = 0.60
     threshold_ratio: float = 0.15
-    max_hop: int = 6
+    max_hop: int = 8
     max_nodes: int = 512
     split_alpha: float = 1.0
     mass: MassConfig = field(default_factory=MassConfig)
@@ -470,6 +493,20 @@ class DedupConfig:
             survivors through the proportional split (energy conserved) and
             the surviving idea is voted, exactly the neighbour contract.
             `False` restores injection-blind behaviour (the ablation switch).
+        distinct_sources: Two seed slots of ONE query part may not land on the
+            same source. `include_seeds` catches twins by cosine, which is the
+            right test for a copied passage and the wrong one for a two-layer
+            index: two propositions of the same passage are different
+            sentences, so they are not near-duplicates, yet a colour that
+            seeds both explores one passage instead of two. Measured
+            2026-08-16 on `musique_prop200`: 287 of 534 colours (54%) had both
+            seeds on one passage - zero of 534 on the chunk-only control - and
+            the coloured web paid -.0524 CI [-.0854, -.0203] P=.001 for it.
+            The source key comes from `Node.source_id` (a proposition inherits
+            its parent's), so no id-string convention leaks into retrieval.
+            On a single-layer index every chunk is its own source and the rule
+            is a no-op, which is why it ships ON: it is the missing half of an
+            existing rule, not a new mechanism. `False` is the ablation switch.
     """
 
     enabled: bool = True
@@ -477,6 +514,7 @@ class DedupConfig:
     floor: float = 0.95
     min_pairs: int = 8
     include_seeds: bool = True
+    distinct_sources: bool = True
 
     def __post_init__(self) -> None:
         if self.sigma < 0.0:
@@ -649,22 +687,65 @@ class NLICandidateConfig:
     Contradiction is only worth scoring between texts that talk about the
     same thing, so candidates are the high-cosine pairs of the corpus - the
     proposition layer when the index has one (contradiction is sharp on
-    propositions), the chunk layer otherwise (documented blur, D26). All
-    values are provisional hand defaults pending the #10 measurement.
+    propositions), the chunk layer otherwise (documented blur, D26).
 
     Attributes:
         top_k: Neighbours considered per node when pairing (union kNN).
+            Provisional hand default.
         min_similarity: Cosine floor a pair must clear to become a candidate.
             High on purpose: NLI cost scales with the candidate count, and
             low-similarity pairs contradict by talking past each other.
+            Provisional hand default.
         max_pairs: Hard cap on scored pairs - the overflow guard that keeps a
             dense corpus from turning the NLI stage into an open-ended bill.
-            Highest-similarity pairs win the cut.
+            Highest-similarity pairs win the cut. Provisional hand default.
+        require_shared_subject: Both texts must name the same subject before
+            the pair is scored. Measured need (2026-08-16, open question
+            #10): cosine alone declared 5.418 of 20.000 scanned pairs
+            contradictory on an encyclopaedic corpus with no natural
+            contradictions, and all fifteen strongest ones were ONE error -
+            two same-kind, different-entity texts (two radio stations, two
+            villages, two high schools), where NLI silently assumes premise
+            and hypothesis share a subject. Raising the threshold cannot fix
+            it: the false positives arrive at .9995 while the single genuine
+            contradiction found sat at .9990. The cost of leaving it off was
+            also measured - the shipped .90 cut ate 28% of a query's energy
+            and dropped S@5 by -.0187 CI [-.0270, -.0104] P=.000 - so the
+            requirement ships ON. `False` is the ablation switch.
+        subject_prefix_chars: How much of a text counts as its SUBJECT
+            region. The shared entity must appear inside the leading slice of
+            both texts, which is what separates "two texts about the National
+            Assembly of Pakistan" from "two radio stations that both mention
+            Jackson": in the second, the shared name is an object, never the
+            subject. A character window is an approximation with two known
+            failure modes - a long opening clause can push the true subject
+            out of the window, and a short one can pull an object in. `40` is
+            where the audit's own texts sit: "Jackson" arrives around
+            character 50 of the composed passage, after the title and the
+            "is a radio station licensed to" opening.
+        max_subject_df_ratio: Share of the corpus an entity may appear in and
+            still qualify as a subject. Same intuition as the entity layer's
+            `max_df_ratio`, applied to a different job: a name carried by
+            hundreds of passages identifies a category, not a subject. On the
+            2026-08-16 audit corpus "Canadian" (1.40%) and "Texas" (1.07%)
+            were exactly the names keeping two Calgary radio stations and two
+            Texan hamlets paired, while "National Assembly of Pakistan"
+            (0.03%) is the kind of name that identifies one thing. Measured
+            effect on the recorded edge set at window 40: 5.418 -> 655 with
+            the window alone, -> 393 with this cut at .005. The RECALL cost
+            is unmeasured and real: a genuine contradiction about a corpus-
+            wide subject would be dropped. Precision wins the trade here
+            because a false negative edge destroys query energy (the shipped
+            cut cost -.0187 S@5), while a missed one costs nothing. `1.0`
+            disables the cut and keeps the window test alone.
     """
 
     top_k: int = 5
     min_similarity: float = 0.80
     max_pairs: int = 20000
+    require_shared_subject: bool = True
+    subject_prefix_chars: int = 40
+    max_subject_df_ratio: float = 0.005
 
     def __post_init__(self) -> None:
         if self.top_k < 1:
@@ -673,6 +754,10 @@ class NLICandidateConfig:
             raise ValueError("min_similarity must lie in [0, 1)")
         if self.max_pairs < 1:
             raise ValueError("max_pairs must be at least 1")
+        if self.subject_prefix_chars < 1:
+            raise ValueError("subject_prefix_chars must be at least 1")
+        if not 0.0 < self.max_subject_df_ratio <= 1.0:
+            raise ValueError("max_subject_df_ratio must lie in (0, 1]")
 
 
 @dataclass(frozen=True)
