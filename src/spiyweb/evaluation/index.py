@@ -42,15 +42,17 @@ from spiyweb.edges import (
     build_entity_edges,
     build_nli_edges,
     build_structural_edges,
+    shared_subject_pairs,
 )
 from spiyweb.entities import extract_entities
 from spiyweb.nodes import Proposition, chunk_documents, extract_propositions
 from spiyweb.store import VectorStore, build_semantic_edges_fast
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Sequence
     from pathlib import Path
 
+    from spiyweb.core.dedup import SimilarityFn
     from spiyweb.edges import NLIModel
     from spiyweb.embedding import Embedder
     from spiyweb.entities import EntityPipeline
@@ -179,8 +181,10 @@ def build_index(
     corpus's high-cosine pairs - propositions when the index has them, chunks
     otherwise - are scored by the model and the survivors land in
     `edges_nli.json` as negative edges for the conflict mechanism, loaded
-    back by `load_nli_edges`. The candidate count is logged BEFORE the model
-    runs. `nli_model_name` is receipt data for `meta.json`, like `llm_model`.
+    back by `load_nli_edges`. Candidates must also NAME THE SAME SUBJECT
+    (`NLICandidateConfig.require_shared_subject`); both counts are logged
+    BEFORE the model runs. `nli_model_name` is receipt data for `meta.json`,
+    like `llm_model`.
     """
     extraction_cfg = (
         extraction_config if extraction_config is not None else EntityExtractionConfig()
@@ -195,9 +199,13 @@ def build_index(
 
     extracted: list[Proposition] = []
     if propositions:
-        if llm is None:
-            raise ValueError("proposition extraction requires an LLM client")
         if force or not paths.propositions_json.exists():
+            # The LLM is required to EXTRACT, not to reopen. Demanding one
+            # before checking the artifact forced every later stage - the NLI
+            # pass, an ablation re-merge - to stand up an Ollama client for a
+            # file that was already on disk.
+            if llm is None:
+                raise ValueError("proposition extraction requires an LLM client")
             # The cost is visible up front: exactly one call per passage.
             log(f"extracting propositions: {len(ids)} passages, one LLM call each ...")
             fresh = extract_propositions(
@@ -332,10 +340,31 @@ def build_index(
                 ),
             )
             pairs.sort(key=lambda edge: edge[2], reverse=True)
-            dropped = max(0, len(pairs) - candidate_cfg.max_pairs)
+            candidates = [(u, v) for u, v, _ in pairs]
+            if candidate_cfg.require_shared_subject:
+                # Cosine says "these two texts look alike", which on an
+                # encyclopaedic corpus is mostly "same kind of thing" - two
+                # radio stations, two villages. NLI then reads them as claims
+                # about ONE subject and reports a contradiction that lives in
+                # its own assumption (#10, measured 2026-08-16). The subject
+                # test runs BEFORE the cap so the cap spends its budget on
+                # pairs that can actually contradict.
+                before = len(candidates)
+                candidates = shared_subject_pairs(
+                    candidates,
+                    texts_all,
+                    _load_entities(paths),
+                    candidate_cfg.subject_prefix_chars,
+                    candidate_cfg.max_subject_df_ratio,
+                )
+                log(
+                    f"nli candidates: {before - len(candidates)} of {before} pairs "
+                    "cut for naming no shared subject"
+                )
+            dropped = max(0, len(candidates) - candidate_cfg.max_pairs)
             if dropped:
                 log(f"nli candidates capped: {dropped} lowest-similarity pairs cut")
-            candidates = [(u, v) for u, v, _ in pairs[: candidate_cfg.max_pairs]]
+            candidates = candidates[: candidate_cfg.max_pairs]
             layer_name = "proposition" if extracted else "chunk"
             # The cost is visible up front: two directed scores per pair.
             log(
@@ -465,6 +494,43 @@ def load_nli_edges(paths: IndexPaths) -> list[NegativeEdge]:
 def load_store(paths: IndexPaths) -> VectorStore:
     """The query-time seed source, rebuilt from the vectors artifact."""
     return VectorStore.load(paths.vectors_npz)
+
+
+def load_similarity(paths: IndexPaths) -> SimilarityFn:
+    """Node-pair cosine over the stored vectors - the OTHER half of dedup.
+
+    `retrieve()` keeps redundancy suppression off unless it receives BOTH an
+    enabled `DedupConfig` and one of these. That is a deliberate contract (a
+    caller with no embeddings cannot honestly dedup), and it is also how the
+    harness ran the whole 2026-08-14/16 campaign with the mechanism silently
+    disabled: it passed neither. Anything that wants dedup measured now has a
+    way to ask for it.
+
+    An unknown id scores `0.0` instead of raising, matching the inspector's
+    reading of the same artifacts: a graph and a vector file that disagree
+    about one node must not end a run.
+    """
+    ids, rows = _load_vectors(paths)
+    matrix = np.asarray(rows, dtype=np.float32)
+    position = {node_id: index for index, node_id in enumerate(ids)}
+
+    def similarity(node: str, others: Sequence[str]) -> Sequence[float]:
+        row = position.get(node)
+        if row is None or not others:
+            return [0.0] * len(others)
+        columns = [position.get(other, -1) for other in others]
+        known = np.array([index for index in columns if index >= 0], dtype=np.int64)
+        scores = np.zeros(len(others), dtype=np.float64)
+        if known.size:
+            values = matrix[known] @ matrix[row]
+            slot = 0
+            for offset, index in enumerate(columns):
+                if index >= 0:
+                    scores[offset] = float(values[slot])
+                    slot += 1
+        return scores.tolist()
+
+    return similarity
 
 
 def load_graph(paths: IndexPaths, weights: LayerWeights | None = None) -> Graph:
