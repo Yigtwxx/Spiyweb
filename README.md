@@ -13,11 +13,11 @@ related nodes light up first; weakly related but genuinely connected nodes
 light up later, through multiple hops. The answer is built from the whole web,
 not from one cluster of near-duplicates.
 
-> **Status: Phase 1 — the propagation core runs; everything around it is next.**
-> `spiyweb.propagate` reproduces the worked example below, with the documented
-> trace pinned as a test. Edge builders, the vector store, the evaluation
-> harness and the developer UI are not written yet. The design has been public
-> from day one so the idea can be judged — and challenged — early.
+> **Status: Phase 1 — measured on three benchmarks, and the gate is not
+> passed yet.** The web beats both baselines on MuSiQue and 2WikiMultihopQA
+> and **loses to iterative retrieval on HotpotQA**. The numbers are below,
+> including the one that does not flatter the project. The design has been
+> public from day one so the idea can be judged — and challenged — early.
 
 ---
 
@@ -107,6 +107,46 @@ RAPTOR). Spiyweb's claimed differentiators are elsewhere:
 - **The web stops itself.** Termination is a relative energy threshold, not a
   "return N results" parameter.
 
+## Interfaces
+
+Two, both optional extras, both outside the package — `pip install spiyweb`
+pulls in neither.
+
+**Browser UI** (`server/` + `web/`) — the one to look at. A FastAPI process in
+front of the library, and a Vite/React front end:
+
+```bash
+pip install -e ".[web]"
+cd web && npm install && npm run build && cd ..
+python -m uvicorn server.app:app --port 8000   # http://localhost:8000
+```
+
+The built front end is served by that same process, so there is one origin and
+nothing else to start. For front-end work, `npm run dev` in `web/` gives hot
+reload on port 5173 and proxies `/api` to the server.
+
+Two views. *Inspect* runs one query and shows the activated web against plain
+`top-k` side by side, the activation paths, and — the part that matters — an
+**energy ledger**: how the injected energy split into held, dissipated and
+destroyed. §2.1 claims dedup only ever redistributes energy while
+contradictions, negative seeds and negative-polarity atoms destroy it; the
+ledger audits that claim on every query and says so out loud when the numbers
+fail to add up. *Runs* watches a measurement live (progress, GPU against the
+88% budget, results with paired bootstrap intervals) and can start or stop
+one — behind a plan-then-type-to-confirm flow, because a stray click here
+costs hours.
+
+**Streamlit inspector** (`ui/`) — the quick ablation panel that came first:
+
+```bash
+pip install -e ".[ui]"
+streamlit run ui/app.py
+```
+
+Both read the same artifacts and call the same `retrieve()`, and they share
+the scene and layout code, so they cannot drift into showing different
+pictures of the same run.
+
 ## Phase 1 plan
 
 | Item | Decision |
@@ -123,11 +163,46 @@ RAPTOR). Spiyweb's claimed differentiators are elsewhere:
 Phase 1 also succeeds if it *fails* clearly: a reliable negative number is a
 better outcome than a polished library built on an unmeasured assumption.
 
+## Results so far
+
+S@5 = 0.65 · support recall + 0.35 · Novelty@5. 1000 questions per run,
+paired bootstrap intervals, winning configuration applied **unchanged** to
+every dataset after the first.
+
+| dataset | SPIYWEB | iterative (IRCoT-style) | plain top-k | verdict |
+|---|---|---|---|---|
+| MuSiQue (tuning, seed 42) | **.5094** | .4631 | .3090 | passes, +.046 CI [+.030, +.062] |
+| MuSiQue (confirmation, seed 123) | **.5073** | .4420 | .3046 | passes, +.065 CI [+.048, +.082] |
+| 2WikiMultihopQA | **.7130** | .687 | .468 | passes, +.026 CI [+.016, +.037] |
+| **HotpotQA** | .6228 | **.6428** | .5623 | **fails**: −.020 CI [−.032, −.009] |
+
+The gate asks for both baselines, so HotpotQA is a failure, not a footnote.
+The diagnosis is that the advantage is **depth-dependent**: 74.5% of
+HotpotQA questions already have all their gold in the dense top-5, where
+Novelty@5 is 0 by construction and spreading can only displace.
+
+**Five pre-registered attempts to close that gap were all recorded as
+negative**, and Phase 1 closed on that. Four worked in the ranking layer
+(a confidence gate, blending, novelty-free slots); the fifth moved inside
+propagation, letting the decomposition's colour count pick the query profile.
+It won +.0025 CI [+.0005,+.0050] on the tuning set, was not confirmed on the
+seed-123 set, and changed HotpotQA by **exactly zero** — not one question's
+window moved. One earlier attempt helped HotpotQA and hurt the deeper sets,
+which is exactly the trade the gate is meant to refuse.
+
+So the honest headline is a result with a condition attached: the advantage
+over both baselines is real on the deeper sets and does not transfer to a
+benchmark that is entirely 2-hop.
+
+Cost: ~2.3 LLM calls per question at query time, against roughly 4 for the
+iterative baseline.
+
 ## Documentation
 
-- [`docs/specs/2026-08-10-spiyweb-design.md`](docs/specs/2026-08-10-spiyweb-design.md) — full design specification
-- [`memory/`](memory/) — decision log: every design choice with its rationale and rejected alternatives (in Turkish)
-- [`CLAUDE.md`](CLAUDE.md) — condensed engineering ground truth
+- [`CLAUDE.md`](CLAUDE.md) — condensed engineering ground truth: the settled
+  invariants, the architecture boundaries, and the rules a change must not
+  break. The full design specification and the decision log (every choice
+  with its rationale and its rejected alternatives) are kept privately.
 
 ## Contributing
 
