@@ -16,6 +16,7 @@ import pytest
 from spiyweb.config import IterativeBaselineConfig
 from spiyweb.evaluation.baseline import (
     IterativeTrace,
+    _build_prompt,
     iterative_retrieve,
     topk_retrieve,
 )
@@ -88,6 +89,19 @@ def run(llm: FakeLLM, config: IterativeBaselineConfig | None = None) -> Iterativ
 
 def test_topk_retrieve_returns_the_index_order() -> None:
     assert topk_retrieve([1.0, 0.0], FakeSeedSource(), 2) == ["p1", "p2"]
+
+
+def test_proposition_ids_are_read_through_their_parent_passage() -> None:
+    """A two-layer index ranks propositions, and only passages have text.
+
+    Before the fold this raised `KeyError` on the first proposition contact
+    and took the whole run down with it.
+    """
+    prompt = _build_prompt(QUESTION, ["p1#p0", "p1#p3", "p2"], TEXTS, TITLES, [])
+    assert "text one" in prompt and "text two" in prompt
+    assert prompt.count("text one") == 1, (
+        "two propositions of one passage must not fill the prompt twice"
+    )
 
 
 def test_the_rewritten_query_reaches_a_new_corpus_region() -> None:
