@@ -4,7 +4,25 @@ from __future__ import annotations
 
 import pytest
 from server import runner
+from server._paths import DATA_ROOT
 from server.schemas import RunRequest
+
+# The indexes these tests pretend exist. `data/` is gitignored - it holds the
+# measurement artifacts, which are far too large to ship - so a fresh clone and
+# every CI runner see an empty directory. Reading the real one made the guard
+# tests pass on the author's machine and fail everywhere else; the allowlist is
+# the unit under test, not the contents of somebody's disk.
+KNOWN_INDEXES: tuple[str, ...] = ("musique", "musique_prop200")
+
+
+@pytest.fixture(autouse=True)
+def _known_indexes(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Name the existing indexes instead of asking the filesystem for them."""
+    monkeypatch.setattr(
+        runner.CACHE,
+        "available",
+        lambda: [DATA_ROOT / name for name in KNOWN_INDEXES],
+    )
 
 
 def _request(**overrides: object) -> RunRequest:
