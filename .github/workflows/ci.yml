@@ -27,9 +27,11 @@ jobs:
       - name: Sync environment
         # `store` is non-negotiable in CI: FAISS itself is the unit under
         # test, there is nothing to fake. `entity` buys the real spaCy import
-        # path cheaply (no model download). `embed` (torch) stays out: every
-        # line of its glue is covered by fake-encoder tests.
-        run: uv sync --group dev --extra store --extra entity
+        # path cheaply (no model download). `web` carries pydantic, which
+        # `server/schemas.py` imports, so the server tests collect at all.
+        # `embed` (torch) stays out: every line of its glue is covered by
+        # fake-encoder tests.
+        run: uv sync --group dev --extra store --extra entity --extra web
 
       - name: Lint
         run: uv run ruff check .

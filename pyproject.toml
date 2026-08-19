@@ -76,5 +76,7 @@ testpaths = ["tests"]
 # `streamlit run ui/app.py` puts `ui/` on sys.path[0], so the inspector imports
 # `graph_view` by its bare name; pytest runs from the repo root and would not
 # find it. One canonical module name, both contexts, no `ui/__init__.py`.
-pythonpath = ["ui"]
+# The repo root joins it for the same reason: `server/` is a repository package,
+# not a wheel package, so nothing installs it onto sys.path for the test run.
+pythonpath = [".", "ui"]
 addopts = "-q"
