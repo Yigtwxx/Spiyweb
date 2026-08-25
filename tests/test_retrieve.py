@@ -125,6 +125,7 @@ def test_the_result_contract_is_deliberately_partial() -> None:
         "contact_suppressed",
         "contact_votes",
         "contact_tau",
+        "dedup_mode",
     }, (
         "the full §2.5 contract (paths, clusters, gaps, refusal) grows "
         "additively and on purpose - the contact_* fields are the elastic "
@@ -146,6 +147,26 @@ DUP_CONTACTS = [
     ("c", 0.7),
     ("d", 0.5),
 ]
+
+
+def _no_twins(node: str, others: list[str]) -> list[float]:
+    """A live similarity backend that finds no duplicate anywhere.
+
+    Two tests below ablate the SOURCE rule; their subject is
+    `distinct_sources=False`, not the absence of a cosine backend. The
+    guard refuses a config no rule can run, so they supply the
+    emptiest legal backend instead of none.
+
+    The SEEDS do not move - every pair scores 0.0, the adaptive cut
+    clamps to `floor`, `find_survivor` never fires. The RUN does: the
+    contact scan goes `width * overfetch` deep, `contact_tau` becomes a
+    number instead of None, and neighbour-level suppression now runs at
+    every hop (`core/propagate.py` gates that on `similarity` alone).
+    Writing "nothing changed" here would be the same kind of claim that
+    cost this project a measurement campaign, so the tests assert the
+    new reality instead of papering over it.
+    """
+    return [0.0] * len(others)
 
 
 def _twin_similarity(node: str, others: list[str]) -> list[float]:
@@ -240,13 +261,17 @@ def test_a_second_seed_on_the_same_passage_is_a_twin_and_refills() -> None:
     from spiyweb import DedupConfig
 
     index = FakeSeedSource(SOURCE_CONTACTS)
-    result = retrieve(
-        [1.0, 0.0],
-        index,
-        _two_layer_graph(),
-        RetrievalConfig(seed_width=2, contact_overfetch=2),
-        dedup=DedupConfig(),
-    )
+    # Only the source rule can run without a similarity backend, and the
+    # library now says so out loud - that warning is part of the contract.
+    with pytest.warns(UserWarning, match="only the distinct-source"):
+        result = retrieve(
+            [1.0, 0.0],
+            index,
+            _two_layer_graph(),
+            RetrievalConfig(seed_width=2, contact_overfetch=2),
+            dedup=DedupConfig(),
+        )
+    assert result.dedup_mode == "sources_only"
     assert index.calls[0][1] == 4, "the source rule needs the overfetch too"
     assert set(result.seeds) == {"p1#p0", "p2"}, (
         "the colour must reach a SECOND passage, not a second sentence of the first one"
@@ -264,10 +289,17 @@ def test_the_source_rule_is_individually_disableable() -> None:
         FakeSeedSource(SOURCE_CONTACTS),
         _two_layer_graph(),
         RetrievalConfig(seed_width=2, contact_overfetch=2),
+        similarity=_no_twins,
         dedup=DedupConfig(distinct_sources=False),
     )
-    assert set(result.seeds) == {"p1#p0", "p1#p3"}, "the old behaviour, exactly"
-    assert result.contact_suppressed == {}
+    assert result.dedup_mode == "cosine_only", (
+        "source rule off, cosine test live - that IS the ablation"
+    )
+    assert set(result.seeds) == {"p1#p0", "p1#p3"}, (
+        "without the source rule both propositions of one passage keep "
+        "their slots - the behaviour the rule was added to change"
+    )
+    assert result.contact_suppressed == {}, "0.0 everywhere suppresses nothing"
 
 
 def test_the_source_rule_is_a_no_op_on_a_single_layer_index() -> None:
@@ -286,9 +318,13 @@ def test_the_source_rule_is_a_no_op_on_a_single_layer_index() -> None:
             FakeSeedSource(CONTACTS),
             graph,
             RetrievalConfig(seed_width=2, contact_overfetch=2),
+            similarity=_no_twins,
             dedup=DedupConfig(distinct_sources=flag),
         )
         for flag in (True, False)
+    )
+    assert on.dedup_mode == "full" and off.dedup_mode == "cosine_only", (
+        "the flag really is the only difference between the two runs"
     )
     assert dict(on.seeds) == dict(off.seeds)
     assert on.contact_suppressed == off.contact_suppressed == {}
@@ -298,16 +334,83 @@ def test_the_source_rule_binds_inside_a_colour_not_across_colours() -> None:
     """Two sub-questions may legitimately land on the same passage."""
     from spiyweb import ColoredRetrievalConfig, DedupConfig, retrieve_colored
 
-    result = retrieve_colored(
-        {"c0": [1.0, 0.0], "c1": [0.0, 1.0]},
-        FakeSeedSource(SOURCE_CONTACTS),
-        _two_layer_graph(),
-        ColoredRetrievalConfig(seed_width=2, contact_overfetch=2),
-        dedup=DedupConfig(),
-    )
+    with pytest.warns(UserWarning, match="only the distinct-source"):
+        result = retrieve_colored(
+            {"c0": [1.0, 0.0], "c1": [0.0, 1.0]},
+            FakeSeedSource(SOURCE_CONTACTS),
+            _two_layer_graph(),
+            ColoredRetrievalConfig(seed_width=2, contact_overfetch=2),
+            dedup=DedupConfig(),
+        )
+    assert result.dedup_mode == "sources_only"
     assert result.seeds_by_color["c0"] == {"p1#p0": 0.9, "p2": 0.7}
     assert result.seeds_by_color["c1"] == {"p1#p0": 0.9, "p2": 0.7}, (
         "the rule is per colour - it must not stop a second colour from "
         "touching a passage the first one already used"
     )
     assert result.contact_suppressed["c0"] == {"p1#p3": "p1#p0"}
+
+
+# --- The dedup contract (2026-08-25) -------------------------------------
+
+
+def test_a_dedup_config_no_rule_can_run_is_refused() -> None:
+    """The trap that cost the 2026-08 campaign, now a hard error.
+
+    `DedupConfig` says what the caller wanted; the cosine twin test also needs
+    a `similarity` backend. With `distinct_sources=False` switching off the
+    only rule that runs without one, the config asks for suppression and gets
+    an unsuppressed web. Silence there is the failure, not the permissiveness.
+    """
+    from spiyweb import DedupConfig
+
+    with pytest.raises(ValueError, match="nothing can run it"):
+        retrieve(
+            [1.0, 0.0],
+            FakeSeedSource(CONTACTS),
+            make_graph(),
+            RetrievalConfig(seed_width=2),
+            dedup=DedupConfig(distinct_sources=False),
+        )
+
+
+def test_the_coloured_path_refuses_the_same_config() -> None:
+    from spiyweb import ColoredRetrievalConfig, DedupConfig, retrieve_colored
+
+    with pytest.raises(ValueError, match="nothing can run it"):
+        retrieve_colored(
+            {"c0": [1.0, 0.0]},
+            FakeSeedSource(CONTACTS),
+            make_graph(),
+            ColoredRetrievalConfig(seed_width=2),
+            dedup=DedupConfig(distinct_sources=False),
+        )
+
+
+def test_the_result_reports_which_dedup_rules_actually_ran() -> None:
+    """`dedup_mode` is the receipt. Without it, "the mechanism was on" is a
+    belief about a config rather than a statement about a run."""
+    from spiyweb import DedupConfig
+
+    plain = retrieve([1.0, 0.0], FakeSeedSource(CONTACTS), make_graph())
+    assert plain.dedup_mode == "off"
+
+    full = retrieve(
+        [1.0, 0.0],
+        FakeSeedSource(DUP_CONTACTS),
+        make_graph(),
+        RetrievalConfig(seed_width=2, contact_overfetch=2),
+        similarity=_twin_similarity,
+        dedup=DedupConfig(floor=0.90, min_pairs=100),
+    )
+    assert full.dedup_mode == "full"
+
+    cosine_only = retrieve(
+        [1.0, 0.0],
+        FakeSeedSource(DUP_CONTACTS),
+        make_graph(),
+        RetrievalConfig(seed_width=2, contact_overfetch=2),
+        similarity=_twin_similarity,
+        dedup=DedupConfig(floor=0.90, min_pairs=100, distinct_sources=False),
+    )
+    assert cosine_only.dedup_mode == "cosine_only"

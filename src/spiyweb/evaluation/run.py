@@ -60,7 +60,7 @@ from spiyweb.evaluation.metrics import (
     support_recall_at_k,
     weighted_objective,
 )
-from spiyweb.retrieve import retrieve, retrieve_colored
+from spiyweb.retrieve import _dedup_mode, retrieve, retrieve_colored
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence
@@ -281,6 +281,12 @@ def evaluate_questions(
     # the artifact said so. A run whose ledger omits the switch cannot be
     # compared with one that has it.
     results["dedup"] = asdict(dedup) if dedup is not None else None
+    # The config records what was ASKED for; this records what could
+    # actually run. They came apart once already - a `DedupConfig`
+    # without a similarity backend is a switched-off mechanism - and
+    # the artifact is where that has to be visible, because the
+    # artifact is what gets compared across runs.
+    results["dedup_mode"] = _dedup_mode(similarity, dedup)
     results["distinct_passages"] = distinct_passages
     if colored_active:
         results["combo"] = _colored_receipt(ccfg)

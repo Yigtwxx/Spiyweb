@@ -587,6 +587,11 @@ def test_the_dedup_switch_actually_reaches_the_mechanism(tmp_path: Path) -> None
     assert results["dedup"]["floor"] == DedupConfig().floor, (
         "the ledger records the config the run actually used"
     )
+    assert results["dedup_mode"] == "full", (
+        "the config says what was asked for; dedup_mode says what could "
+        "run, and a run whose artifact carries only the first cannot be "
+        "told apart from one where the mechanism was silently off"
+    )
     assert "Duplicate suppression (D6): ON" in render_report(results)
 
 

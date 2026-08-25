@@ -17,6 +17,7 @@ is also how D17 keeps the "when is this weak?" policy out of the library.
 
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Protocol
 
@@ -101,6 +102,17 @@ class RetrievalResult:
     """Votes earned at contact selection, same keying as propagation votes."""
     contact_tau: float | None = None
     """The adaptive cut used at contact selection - visible, as required."""
+    dedup_mode: str = "off"
+    """Which duplicate rules actually RAN: "off", "sources_only",
+    "cosine_only" or "full". A `DedupConfig` alone does not switch the
+    mechanism on - the cosine twin test also needs a `similarity` backend -
+    and the 2026-08 campaign measured tour after tour believing otherwise.
+    The ledger now states what ran instead of leaving it to be inferred.
+
+    This names CAPABILITY, not effect: the source rule is a no-op on a
+    single-layer index, so "sources_only" can still suppress nothing.
+    What actually happened is in `contact_suppressed` and the
+    propagation ledger."""
 
     def ranked(self) -> list[tuple[str, float]]:
         """Activated nodes with accumulated energy, strongest first."""
@@ -199,6 +211,7 @@ def retrieve(
     straight through to `propagate`.
     """
     cfg = config if config is not None else RetrievalConfig()
+    _check_dedup_contract(similarity, dedup)
     contacts = index.search(
         query_embedding,
         _contact_depth(cfg.seed_width, cfg.contact_overfetch, similarity, dedup),
@@ -235,6 +248,70 @@ def retrieve(
         contact_suppressed=contact_suppressed,
         contact_votes=_contact_votes(contact_suppressed, source_of),
         contact_tau=contact_tau,
+        dedup_mode=_dedup_mode(similarity, dedup),
+    )
+
+
+def _dedup_mode(similarity: SimilarityFn | None, dedup: DedupConfig | None) -> str:
+    """Name which duplicate rules the call can actually run.
+
+    Two rules suppress a duplicate and they need different things: the cosine
+    twin test needs a `similarity` backend, the SOURCE test needs none. A
+    config alone therefore says what the caller WANTED, not what happened,
+    and the gap between the two is exactly how the 2026-08 campaign measured
+    with the mechanism off. The result reports the answer rather than leaving
+    it to be inferred from an empty ledger.
+    """
+    if dedup is None or not dedup.enabled:
+        return "off"
+    by_cosine = similarity is not None
+    by_source = dedup.distinct_sources
+    if by_cosine and by_source:
+        return "full"
+    if by_cosine:
+        return "cosine_only"
+    if by_source:
+        return "sources_only"
+    # Unreachable through `retrieve`/`retrieve_colored`: this is exactly
+    # the combination `_check_dedup_contract` refuses upstream. Left as a
+    # total function rather than a raise - naming a mode is not the
+    # place to enforce one.
+    return "off"
+
+
+def _check_dedup_contract(
+    similarity: SimilarityFn | None, dedup: DedupConfig | None
+) -> None:
+    """Refuse - or flag - a dedup request the call cannot honour.
+
+    With an enabled config and NEITHER rule live, `dedup=` is a no-op the
+    caller believes in. That is a hard error: silently returning an
+    unsuppressed web under a config that asks for suppression is the failure
+    this project already paid for once.
+
+    With the source rule alone the call is legitimate - it is a measured,
+    embedding-free mechanism - but half the config is dead: no cosine cut at
+    contact, no neighbour-level suppression inside propagation, no
+    propagation votes, no adaptive threshold. That warns rather than raises,
+    because ablating one rule is a supported thing to do.
+    """
+    if dedup is None or not dedup.enabled or similarity is not None:
+        return
+    if not dedup.distinct_sources:
+        raise ValueError(
+            "dedup is enabled but nothing can run it: the cosine twin test "
+            "needs `similarity=`, and `distinct_sources=False` switched off "
+            "the only rule that works without one. Pass a SimilarityFn, or "
+            "pass `dedup=None` to retrieve without suppression."
+        )
+    warnings.warn(
+        "dedup is enabled without `similarity=`: only the distinct-source "
+        "seed rule can run. The cosine twin test, neighbour-level "
+        "suppression and the adaptive threshold all stay off - the result "
+        'reports `dedup_mode="sources_only"`. Pass a SimilarityFn to enable '
+        "them.",
+        UserWarning,
+        stacklevel=3,
     )
 
 
@@ -395,6 +472,8 @@ class ColoredRetrievalResult:
     """Votes earned at contact selection across all colours."""
     contact_taus: Mapping[str, float] = field(default_factory=dict)
     """Per colour: the adaptive cut used at contact selection."""
+    dedup_mode: str = "off"
+    """Which duplicate rules actually RAN; see `RetrievalResult`."""
 
     def ranked(self) -> list[tuple[str, float]]:
         """Activated nodes by energy summed across colours, strongest first."""
@@ -498,6 +577,7 @@ def retrieve_colored(
     if not colored_queries:
         raise ValueError("at least one coloured query is required")
     cfg = config if config is not None else ColoredRetrievalConfig()
+    _check_dedup_contract(similarity, dedup)
 
     depth = _contact_depth(cfg.seed_width, cfg.contact_overfetch, similarity, dedup)
     source_key = _source_key(graph, source_of)
@@ -554,4 +634,5 @@ def retrieve_colored(
         contact_suppressed=contact_suppressed,
         contact_votes=contact_votes,
         contact_taus=contact_taus,
+        dedup_mode=_dedup_mode(similarity, dedup),
     )
