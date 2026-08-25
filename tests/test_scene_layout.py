@@ -6,7 +6,7 @@ import math
 
 import pytest
 
-from graph_view import (
+from spiyweb.scene import (
     LayoutConfig,
     _shelf_boxes,
     layout_seed,

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import math
 
-from graph_view import hop_ring_layout
+from spiyweb.scene import hop_ring_layout
 
 _HOPS = {"a": 0, "b": 1, "c": 1, "d": 2, "e": 2, "f": 2}
 _ENERGY = {"a": 5.0, "b": 3.0, "c": 2.0, "d": 1.5, "e": 1.2, "f": 1.0}

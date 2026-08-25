@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "spiyweb"
-version = "0.0.1"
+dynamic = ["version"]
 description = "Graph-based retrieval for RAG: the query is injected as an energy seed and spreads outward with decay."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -25,12 +25,11 @@ classifiers = [
 dependencies = []
 
 [project.optional-dependencies]
-# Developer inspection tool, never a package dependency: pip install spiyweb[ui]
-# `store` is not optional here: the inspector reads vectors.npz for both the
-# seed search and the dedup similarity backend. `embed` stays out on purpose -
-# torch is a two-gigabyte dependency, and the corpus-atom query mode works
-# without it, so the tool is fully usable with `store` alone.
-ui = ["streamlit>=1.36", "spiyweb[store]"]
+# `spiyweb.scene` - layout, scene building and comparison for the activated
+# web. Promoted out of the repo-rooted Streamlit tool in Faz 2.2, so it now
+# ships in the wheel; numpy alone is enough to import it, which is exactly
+# the constraint that kept it render-agnostic in the first place.
+view = ["numpy>=1.26"]
 # Heavy index-time dependencies stay granular on purpose: `dependencies = []`
 # is the packaging-level face of the core-purity rule. `index` is the union.
 store = ["numpy>=1.26", "faiss-cpu>=1.8"]
@@ -41,7 +40,12 @@ nli = ["torch>=2.2", "transformers>=4.40"]
 # The browser face: a FastAPI process serving `web/`. Like `ui`, it lives in
 # the repository rather than in the wheel - `dependencies = []` is the rule
 # that keeps the propagation core free of all of this.
-web = ["fastapi>=0.115", "uvicorn[standard]>=0.30", "spiyweb[store]"]
+web = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "spiyweb[store]",
+    "spiyweb[view]",
+]
 index = ["spiyweb[store]", "spiyweb[embed]", "spiyweb[entity]"]
 
 [project.urls]
@@ -51,16 +55,21 @@ Source = "https://github.com/Yigtwxx/spiyweb"
 [dependency-groups]
 dev = ["pytest>=8.0", "ruff>=0.6"]
 
+# The version has ONE source: `__init__.py`. A second copy in this file
+# drifts sooner or later, and a drifted version number lies about which
+# code produced a measurement artifact.
+[tool.hatch.version]
+path = "src/spiyweb/__init__.py"
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/spiyweb"]
 
 [tool.ruff]
 line-length = 88
 target-version = "py311"
-# `ui` and `server` join the first-party roots so isort keeps `graph_view`
-# and `server.*` out of the third-party block; the package itself still ships
-# only `src/spiyweb`.
-src = ["src", "tests", "ui", "server"]
+# `server` joins the first-party roots so isort keeps `server.*` out of the
+# third-party block; the package itself still ships only `src/spiyweb`.
+src = ["src", "tests", "server"]
 extend-exclude = ["web"]
 
 [tool.ruff.lint]
@@ -73,10 +82,9 @@ select = ["E", "F", "I", "UP", "B", "ANN", "RUF"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-# `streamlit run ui/app.py` puts `ui/` on sys.path[0], so the inspector imports
-# `graph_view` by its bare name; pytest runs from the repo root and would not
-# find it. One canonical module name, both contexts, no `ui/__init__.py`.
-# The repo root joins it for the same reason: `server/` is a repository package,
-# not a wheel package, so nothing installs it onto sys.path for the test run.
-pythonpath = [".", "ui"]
+# The repo root only: `server/` is a repository package rather than a wheel
+# package, so nothing installs it onto sys.path for the test run. `ui/` used
+# to be here too, for a bare `import graph_view`; that module now lives in
+# the package as `spiyweb.scene` and needs no path help.
+pythonpath = ["."]
 addopts = "-q"

@@ -1,9 +1,14 @@
 """Render-agnostic view layer of the activated web: layout, scene, renderers.
 
-No Streamlit and no I/O live here on purpose. The CI environment installs the
-`store` and `entity` extras but never `ui`, so everything worth testing must be
-importable with numpy alone; `app.py` owns the page, the widgets and every file
-read. The split is "pure / shell", not "graph / page".
+No I/O and no rendering library live here on purpose: everything worth
+testing must be importable with numpy alone. That is what lets one query
+produce one picture no matter which front end asked - the browser face reads
+this module rather than reimplementing any of it in TypeScript. The split is
+"pure / shell", not "graph / page".
+
+numpy is the reason this is not imported from `spiyweb/__init__.py`: the
+package promises `import spiyweb` with nothing installed, so this module
+arrives through `spiyweb[view]` and an explicit `import spiyweb.scene`.
 
 Determinism is this module's contract, not the drawing library's: the same
 query over the same index must produce a bit-identical picture. That is why
@@ -15,7 +20,7 @@ from __future__ import annotations
 
 import hashlib
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING
 
 import numpy as np
 
@@ -1046,10 +1051,6 @@ def make_similarity(vectors: VectorMatrix) -> SimilarityFn:
     return similarity
 
 
-class RendererUnavailable(RuntimeError):
-    """A renderer whose optional dependency is not installed."""
-
-
 def _scene_records(scene: GraphScene) -> tuple[list[dict], list[dict], list[dict]]:
     """Scene -> three plain record lists: active edges, cut edges, nodes."""
     active = [
@@ -1194,100 +1195,6 @@ def build_vega_spec(scene: GraphScene, *, height: int = 620) -> dict[str, object
             },
         ],
     }
-
-
-class SceneRenderer(Protocol):
-    """The one thing a drawing backend must be able to do."""
-
-    name: str
-
-    def render(self, scene: GraphScene, *, height: int) -> None: ...
-
-
-@dataclass(frozen=True)
-class VegaLiteRenderer:
-    """The default: Streamlit's built-in Vega-Lite, no new dependency.
-
-    Pan and zoom come free from the bound interval param; click-through does
-    not, which is the one thing that would justify pulling in Plotly.
-    """
-
-    name: str = "vega-lite"
-
-    def render(self, scene: GraphScene, *, height: int) -> None:
-        try:
-            import streamlit as st
-        except ImportError as error:  # pragma: no cover - shell-only path
-            raise RendererUnavailable(str(error)) from error
-        st.vega_lite_chart(spec=build_vega_spec(scene, height=height), width="stretch")
-
-
-@dataclass(frozen=True)
-class PlotlyRenderer:
-    """Optional: WebGL marks and click-through, at the cost of a dependency.
-
-    The layout still comes from `spring_layout`; only the drawing changes, so
-    the determinism contract is unaffected by the swap.
-    """
-
-    name: str = "plotly"
-
-    def render(self, scene: GraphScene, *, height: int) -> None:
-        try:
-            import plotly.graph_objects as go
-            import streamlit as st
-        except ImportError as error:  # pragma: no cover - shell-only path
-            raise RendererUnavailable(str(error)) from error
-        figure = go.Figure()
-        for kind, dash in (("active", "solid"), ("suppressed", "dash")):
-            for layer in EDGE_LAYER_ORDER:
-                xs: list[float | None] = []
-                ys: list[float | None] = []
-                for edge in scene.edges:
-                    if edge.kind != kind or edge.layer != layer:
-                        continue
-                    xs += [edge.x1, edge.x2, None]
-                    ys += [edge.y1, edge.y2, None]
-                if not xs:
-                    continue
-                figure.add_trace(
-                    go.Scattergl(
-                        x=xs,
-                        y=ys,
-                        mode="lines",
-                        line={"color": LAYER_COLORS[layer], "dash": dash},
-                        name=f"{layer} ({kind})",
-                        hoverinfo="skip",
-                    )
-                )
-        figure.add_trace(
-            go.Scattergl(
-                x=[node.x for node in scene.nodes],
-                y=[node.y for node in scene.nodes],
-                mode="markers",
-                marker={
-                    "color": [NODE_KIND_COLORS[node.kind] for node in scene.nodes],
-                    "size": 10,
-                },
-                text=[node.tooltip for node in scene.nodes],
-                hoverinfo="text",
-                name="atoms",
-            )
-        )
-        figure.update_layout(height=height, showlegend=True)
-        st.plotly_chart(figure, width="stretch")
-
-
-RENDERERS: dict[str, SceneRenderer] = {
-    VegaLiteRenderer.name: VegaLiteRenderer(),
-    PlotlyRenderer.name: PlotlyRenderer(),
-}
-"""Name -> renderer, for the page's selector."""
-
-
-def get_renderer(name: str) -> SceneRenderer:
-    """Look up a renderer by name; unknown names fall back to Vega-Lite."""
-    return RENDERERS.get(name, RENDERERS[VegaLiteRenderer.name])
 
 
 def hop_ring_layout(

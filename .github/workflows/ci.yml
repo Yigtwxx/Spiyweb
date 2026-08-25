@@ -41,3 +41,51 @@ jobs:
 
       - name: Test
         run: uv run pytest
+
+  wheel:
+    # The zero-dependency rule is a PACKAGING claim, and the `check` job
+    # structurally cannot test it: `uv sync --extra store --extra entity
+    # --extra web` puts numpy, faiss and pydantic on the path, so
+    # `import spiyweb` succeeds there whatever the wheel contains. This job is
+    # the only place the claim is measured, and the only place `py.typed`, the
+    # single version source and the canonical trace are checked on the
+    # ARTIFACT rather than on the checkout.
+    #
+    # ubuntu only, deliberately: the wheel is `py3-none-any` - byte-identical
+    # on all three platforms - and what is under test is dependency isolation,
+    # which has no OS dimension. The day a compiled extension ships, this job
+    # joins the matrix and not a day before.
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: Build the wheel
+        run: uv build --wheel
+
+      - name: Install it into an empty environment - no extras, no dev group
+        run: |
+          uv venv .wheelenv
+          uv pip install --python .wheelenv/bin/python dist/*.whl
+
+      - name: The environment really is empty
+        # Logged as well as asserted: if a dependency ever leaks in, the list
+        # is right there next to the failure. An explicit `exit 1` rather
+        # than `! cmd`, which errexit does not apply to and which would stop
+        # guarding the moment a line is added after it.
+        run: |
+          uv pip list --python .wheelenv/bin/python
+          for mod in numpy faiss torch spacy transformers fastapi pydantic; do
+            if .wheelenv/bin/python -c "import $mod" 2>/dev/null; then
+              echo "::error::$mod installed - the wheel is not dependency-free"
+              exit 1
+            fi
+          done
+
+      - name: Smoke the artifact
+        run: .wheelenv/bin/python tests/wheel_smoke.py

@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from graph_view import build_layer_index
 from spiyweb.config import LayerWeights
+from spiyweb.scene import build_layer_index
 
 _LAYERS: dict[str, list[tuple[str, str, float]]] = {
     "semantic": [("a", "b", 0.9), ("b", "c", 0.4)],

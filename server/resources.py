@@ -32,8 +32,8 @@ from server.settings import SETTINGS
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from graph_view import EdgeLayerIndex, VectorMatrix
     from spiyweb.core.graph import Graph
+    from spiyweb.scene import EdgeLayerIndex, VectorMatrix
 
 T = TypeVar("T")
 
@@ -190,7 +190,7 @@ class ResourceCache:
             )
 
     def vectors(self, root: Path) -> VectorMatrix:
-        from graph_view import vector_matrix
+        from spiyweb.scene import vector_matrix
 
         def build() -> VectorMatrix:
             with np.load(root / "vectors.npz") as payload:
@@ -202,7 +202,7 @@ class ResourceCache:
             return self._vectors.touch(str(root), build)
 
     def layer_index(self, root: Path) -> EdgeLayerIndex:
-        from graph_view import build_layer_index
+        from spiyweb.scene import build_layer_index
 
         def build() -> EdgeLayerIndex:
             ids = [str(record["id"]) for record in self.node_records(root)]

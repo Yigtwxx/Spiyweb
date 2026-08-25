@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
-from graph_view import (
+from spiyweb.config import LayerWeights
+from spiyweb.core.graph import Graph, Node
+from spiyweb.core.propagate import Activation
+from spiyweb.scene import (
     LayoutConfig,
     ViewConfig,
     build_layer_index,
@@ -11,9 +14,6 @@ from graph_view import (
     induced_edges,
     select_subgraph,
 )
-from spiyweb.config import LayerWeights
-from spiyweb.core.graph import Graph, Node
-from spiyweb.core.propagate import Activation
 
 _FAST = LayoutConfig(iterations=5)
 
@@ -167,7 +167,7 @@ def test_caption_states_what_was_left_out() -> None:
 
 
 def _spec(**overrides: object) -> dict:
-    from graph_view import build_vega_spec
+    from spiyweb.scene import build_vega_spec
 
     return build_vega_spec(_scene(**overrides))  # type: ignore[arg-type]
 
@@ -186,7 +186,7 @@ def test_spec_separates_active_and_dashed_edge_layers() -> None:
 
 def test_spec_colour_domain_covers_every_layer() -> None:
     """A legend that reshuffles per query cannot be read."""
-    from graph_view import EDGE_LAYER_ORDER
+    from spiyweb.scene import EDGE_LAYER_ORDER
 
     rule = _spec()["layer"][0]
     scale = rule["encoding"]["color"]["scale"]
@@ -208,13 +208,6 @@ def test_spec_carries_every_node_and_only_labelled_text() -> None:
 
 def test_spec_is_deterministic() -> None:
     assert _spec() == _spec()
-
-
-def test_get_renderer_falls_back_to_vega_lite() -> None:
-    from graph_view import get_renderer
-
-    assert get_renderer("nope").name == "vega-lite"
-    assert get_renderer("plotly").name == "plotly"
 
 
 def test_zoom_param_is_declared_on_exactly_one_layer() -> None:

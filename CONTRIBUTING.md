@@ -36,6 +36,9 @@ the most valuable contributions are not pull requests but:
 - Every mechanism must be individually disableable from config; ablation is
   how this project proves itself.
 - `core/` stays pure: no I/O, no LLM, no network, no filesystem.
+- Public API changes go through `CHANGELOG.md`. `spiyweb.__all__` is
+  snapshot-tested in `tests/test_public_api.py`, so an undeclared export
+  fails CI before it reaches anyone.
 - No secrets in source; read from environment variables.
 
 ## Commit messages

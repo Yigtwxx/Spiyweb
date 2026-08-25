@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import pytest
 
-from graph_view import build_comparison
 from spiyweb.core.graph import Graph, Node
 from spiyweb.core.propagate import Activation
+from spiyweb.scene import build_comparison
 
 _WEB: list[tuple[str, float]] = [("a", 5.0), ("d", 2.9), ("b", 2.2)]
 _BASELINE = ["a", "x", "y"]

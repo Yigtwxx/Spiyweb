@@ -6,7 +6,6 @@ CLAUDE.local.md
 # rejected alternatives and the raw measurement history behind it.
 memory/
 docs/
-Stats/
 
 # Secrets
 .env
@@ -23,6 +22,12 @@ venv/
 *.egg-info/
 .ruff_cache/
 .pytest_cache/
+# `uv build` output and the throwaway env the wheel smoke job installs
+# into. Root-anchored on purpose: `web/dist/` has its own rule below and
+# stops being throwaway the day the viewer ships inside the wheel.
+/dist/
+/build/
+.wheelenv/
 
 # Data, indexes, experiment output
 data/

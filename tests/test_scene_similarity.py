@@ -7,9 +7,9 @@ import math
 import numpy as np
 import pytest
 
-from graph_view import make_similarity, vector_matrix
 from spiyweb.config import DedupConfig
 from spiyweb.core.dedup import adaptive_threshold, find_survivor
+from spiyweb.scene import make_similarity, vector_matrix
 
 _ROWS = [
     [1.0, 0.0],

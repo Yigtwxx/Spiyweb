@@ -2,7 +2,7 @@
 
 Everything the browser draws for a single question is produced here in one
 `retrieve()` call. The layout, the scene assembly and the side-by-side view
-model all come from `graph_view`, the same module the Streamlit inspector
+model all come from `spiyweb.scene`, the module the browser face shares
 uses, so the two front ends cannot drift into showing different pictures of
 the same run.
 """
@@ -59,16 +59,6 @@ def _query_vector(request: InspectRequest, root: Path) -> tuple[list[float], str
 
 def run(request: InspectRequest) -> InspectResponse:
     """Run one inspection and shape it for the wire."""
-    from graph_view import (
-        EDGE_LAYER_ORDER,
-        LAYER_COLORS,
-        LayoutConfig,
-        ViewConfig,
-        build_comparison,
-        build_scene,
-        hop_ring_layout,
-        make_similarity,
-    )
     from spiyweb.config import (
         ConflictConfig,
         DedupConfig,
@@ -90,6 +80,16 @@ def run(request: InspectRequest) -> InspectResponse:
     )
     from spiyweb.profiles import PROFILES
     from spiyweb.retrieve import retrieve
+    from spiyweb.scene import (
+        EDGE_LAYER_ORDER,
+        LAYER_COLORS,
+        LayoutConfig,
+        ViewConfig,
+        build_comparison,
+        build_scene,
+        hop_ring_layout,
+        make_similarity,
+    )
 
     root = CACHE.index_root(request.index)
     if request.view.max_nodes > SETTINGS.max_scene_nodes:
