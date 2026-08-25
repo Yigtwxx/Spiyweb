@@ -86,6 +86,22 @@ result.stop_reason  # 'threshold' — the web stopped itself
 `A_dup` is missing because its edge was suppressed and its share redistributed.
 Neither outcome came from a result-count parameter.
 
+## Public API
+
+`import spiyweb` is the query-time contract: everything in `spiyweb.__all__`
+and nothing else. Building an index is a different job with a different
+dependency profile, so it has its own front door:
+
+```python
+from spiyweb.indexing import DocumentInput, VectorStore, chunk_documents
+```
+
+That module imports with nothing installed; only the FAISS-bound names ask for
+`pip install "spiyweb[store]"`. Anything reached through a submodule path
+(`spiyweb.core.*`, `spiyweb.evaluation.*`) is internal and may change without
+notice. The surface is snapshot-tested, and changes to it are written down in
+[CHANGELOG.md](CHANGELOG.md).
+
 ## What is different
 
 Spreading activation over graphs is not new (HippoRAG, GraphRAG, LightRAG,
@@ -109,11 +125,11 @@ RAPTOR). Spiyweb's claimed differentiators are elsewhere:
 
 ## Interfaces
 
-Two, both optional extras, both outside the package — `pip install spiyweb`
-pulls in neither.
+One, an optional extra, outside the package — `pip install spiyweb` pulls in
+none of it.
 
-**Browser UI** (`server/` + `web/`) — the one to look at. A FastAPI process in
-front of the library, and a Vite/React front end:
+**Browser UI** (`server/` + `web/`) — a FastAPI process in front of the
+library, and a Vite/React front end:
 
 ```bash
 pip install -e ".[web]"
@@ -136,16 +152,9 @@ fail to add up. *Runs* watches a measurement live (progress, GPU against the
 one — behind a plan-then-type-to-confirm flow, because a stray click here
 costs hours.
 
-**Streamlit inspector** (`ui/`) — the quick ablation panel that came first:
-
-```bash
-pip install -e ".[ui]"
-streamlit run ui/app.py
-```
-
-Both read the same artifacts and call the same `retrieve()`, and they share
-the scene and layout code, so they cannot drift into showing different
-pictures of the same run.
+The scene and layout code is not the front end's: it lives in the package as
+`spiyweb.scene` (numpy only, `spiyweb[view]`), so one query produces one
+picture no matter what asks for it.
 
 ## Phase 1 plan
 
@@ -175,6 +184,13 @@ every dataset after the first.
 | MuSiQue (confirmation, seed 123) | **.5073** | .4420 | .3046 | passes, +.065 CI [+.048, +.082] |
 | 2WikiMultihopQA | **.7130** | .687 | .468 | passes, +.026 CI [+.016, +.037] |
 | **HotpotQA** | .6228 | **.6428** | .5623 | **fails**: −.020 CI [−.032, −.009] |
+
+![Phase 1 measurement record](Stats/phase1_results.png)
+
+**[`RESULTS.md`](RESULTS.md) is the complete record** — one table with every
+number Phase 1 produced: the gate, the metric decomposition, the per-hop
+breakdown, all five failed rescue rounds, every mechanism ablation, the
+contradiction-detection measurements, and the seven limits that go with them.
 
 The gate asks for both baselines, so HotpotQA is a failure, not a footnote.
 The diagnosis is that the advantage is **depth-dependent**: 74.5% of

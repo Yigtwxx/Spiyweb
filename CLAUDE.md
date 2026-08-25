@@ -176,6 +176,8 @@ src/spiyweb/
 ├── store.py              # numpy + FAISS single-file vector store (outside core/)
 │                         #   + FAISS-backed twin of the semantic edge builder
 ├── output.py             # result structure, paths, clusters, confidence, conflicts
+├── indexing.py           # index-time facade: the pieces that BUILD a web
+├── scene.py              # render-agnostic layout/scene, numpy only (D2.2)
 ├── retrieve.py           # seed injection -> propagate -> structured result
 └── evaluation/           # renamed from eval/ — avoids shadowing the Python builtin
     ├── datasets.py       # MuSiQue loader: download, deterministic sample, dedup pool
@@ -187,9 +189,16 @@ src/spiyweb/
     ├── index.py          # corpus -> vectors + entities + edge-layer artifacts
     └── run.py            # CLI: download / index / evaluate / report
 
-ui/                       # developer tool, optional extra: pip install spiyweb[ui]
-├── app.py                # single-page Streamlit inspector
-└── graph_view.py         # force-directed view of the activated web
+server/                   # browser face, backend half - repository, not wheel
+├── app.py                # FastAPI routes + SSE + serves web/dist
+├── inspect_api.py        # one query end to end: retrieve -> scene -> ledger
+├── runner.py             # measurement-run supervisor: plan token, lock, logs
+├── resources.py          # process-wide LRU cache: graph, store, vectors
+└── ledger.py             # energy ledger: held / dissipated / destroyed
+
+web/                      # browser face, front half - React + Vite + TS
+├── src/views/            # Inspect (one query) and Runs (a measurement)
+└── src/components/       # WebCanvas, LedgerStrip, Meter, Plate
 ```
 
 ### Boundary rules — the single most important thing in this file
@@ -202,8 +211,12 @@ ui/                       # developer tool, optional extra: pip install spiyweb[
 3. **`evaluation/` is the Phase 1 product.** It becomes the regression suite
    later. It is never throwaway code. (Named `evaluation`, not `eval`, to avoid
    shadowing the Python builtin.)
-4. **`ui/` is not a package dependency.** `pip install spiyweb` must not pull in
-   Streamlit; the UI ships as an optional extra — `pip install spiyweb[ui]`.
+4. **The browser face is not a package dependency.** `pip install spiyweb`
+   must not pull in FastAPI or a front-end toolchain; `server/` and `web/`
+   live in the repository and arrive through `pip install spiyweb[web]`.
+   `scene.py` is the exception that proves the rule: it was promoted INTO
+   the package because two front ends must draw one picture, and it costs
+   numpy alone — `spiyweb[view]`, never an eager import.
 5. **Contradiction question templates live outside `core/`.** The library ships
    them so callers do not rewrite them, but the core only produces structured
    conflict data.
@@ -228,7 +241,7 @@ ui/                       # developer tool, optional extra: pip install spiyweb[
 | Environment | **Python 3.11 + uv** |
 | Platforms | **macOS + Windows + Linux** — no OS-specific paths or calls; device order CUDA → MPS → CPU |
 | LLM provider | **Local-first (Ollama)**; free APIs (Gemini, OpenRouter, Groq) optional via config — the provider abstraction lives outside `core/` |
-| Packaging | **`src/spiyweb/` layout**; `eval/` → **`evaluation/`**; `ui/` as optional extra **`spiyweb[ui]`** |
+| Packaging | **`src/spiyweb/` layout**; `eval/` → **`evaluation/`**; browser face as optional extra **`spiyweb[web]`** |
 | Repo / license | **Public from day one, Apache-2.0** |
 
 Because the repo is public from day one, `CLAUDE.local.md` must stay in
@@ -308,7 +321,9 @@ All three must be clean before any change is considered done.
 - **Learned-layer drift.** Reinforcement without a forgetting factor collapses
   the graph toward whatever was asked most often.
 
-Full design (`docs/specs/2026-08-10-spiyweb-design.md`) and the decision log
-(`memory/`) are kept **locally and out of the repository** — this file is the
-public ground truth. A reference to either from here points at something a
-clone will not contain; that is deliberate, not a broken link.
+The original design document (`docs/specs/2026-08-10-spiyweb-design.md`, frozen
+2026-08-25 as a historical snapshot) and the decision log (`memory/`) are kept
+**locally and out of the repository** — this file is the public ground truth,
+and where the frozen spec disagrees with it, this file wins. A reference to
+either from here points at something a clone will not contain; that is
+deliberate, not a broken link.
