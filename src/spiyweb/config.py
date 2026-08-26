@@ -9,7 +9,10 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field, fields
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 EdgeLayer = Literal["semantic", "entity", "structural", "derivation", "learned"]
 """The five edge layers of the hybrid graph; layer choices live here, not in core."""
@@ -141,6 +144,13 @@ class EntityEdgeConfig:
             Default measured on the 2026-08-14 MuSiQue grid: the original
             hand value of 0.5 produced 2.5M entity edges (mean degree 438)
             and ground the propagation to dust; 0.02 won the grid.
+
+            The builder floors the resulting ceiling at 2 (see
+            `edges/entity.py`). Below that the layer cannot emit a single
+            edge, because an entity needs two chunks to pair - so at this
+            ratio every corpus under 100 chunks got an EMPTY entity layer,
+            silently, until 2026-08-26. The floor cannot move a measured
+            number: the smallest sealed index holds 3336 chunks.
     """
 
     max_df_ratio: float = 0.02
@@ -901,6 +911,121 @@ class ConsolidationConfig:
     def __post_init__(self) -> None:
         if self.min_runs < 1:
             raise ValueError("min_runs must be at least 1")
+
+
+@dataclass(frozen=True)
+class CorpusLintConfig:
+    """Thresholds of the corpus-lint diagnostic (D37) - Phase 2's own product.
+
+    Every value here is a REPORTING threshold, never a mechanism: nothing in
+    this config changes what retrieval does, only what the lint pass calls
+    worth mentioning. That is why they can be tuned freely, and why a corpus
+    owner who disagrees with one can move it without touching a measured
+    number.
+
+    Attributes:
+        min_orphan_nodes: Smallest island worth naming. `2` because a
+            single unconnected atom is reported separately, as `isolated`.
+        min_hub_degree: Below this many live neighbours a node is simply not
+            a hub, whatever its share works out to.
+        hub_share_floor: A hub is reported when its STRONGEST neighbour
+            receives no more than this fraction of what it forwards. Not a
+            degree cutoff: eight hundred neighbours behind one dominant edge
+            waste nothing, and a degree-based rule would report them anyway.
+        split_alpha: The exponent the share is computed with. Mirrors
+            `PropagationConfig.split_alpha` so the number reported is the
+            share energy would actually take - set them together or the lint
+            describes a propagation that is not the one being run.
+        duplicate_weight: Raw semantic-layer cosine at or above which two
+            atoms are called near-identical. A STATIC proxy: query-time
+            duplicate detection is dynamic and adaptive (D6), and this pass
+            does not pretend to reproduce it.
+        min_duplicates_per_source: Near-duplicate pairs inside one document
+            before the document itself is reported. Within-source repetition
+            never becomes a vote (D7), so it is pure cost.
+        min_contradictions_per_source: Marked contradiction pairs before a
+            source is named in the contradiction map.
+        max_per_kind: Findings kept per kind, worst first. A corpus with ten
+            thousand orphans needs the worst twenty and a count, not ten
+            thousand rows.
+        max_nodes_per_finding: Atoms listed inside one finding, so a report
+            of a large island stays readable.
+    """
+
+    min_orphan_nodes: int = 2
+    min_hub_degree: int = 20
+    hub_share_floor: float = 0.05
+    split_alpha: float = 1.0
+    duplicate_weight: float = 0.95
+    min_duplicates_per_source: int = 1
+    min_contradictions_per_source: int = 1
+    max_per_kind: int = 20
+    max_nodes_per_finding: int = 20
+
+    def __post_init__(self) -> None:
+        if self.min_orphan_nodes < 2:
+            raise ValueError("min_orphan_nodes must be at least 2")
+        if self.min_hub_degree < 2:
+            raise ValueError("min_hub_degree must be at least 2")
+        if not 0.0 < self.hub_share_floor < 1.0:
+            raise ValueError("hub_share_floor must lie strictly between 0 and 1")
+        if self.split_alpha <= 0.0:
+            raise ValueError("split_alpha must be positive")
+        if not 0.0 < self.duplicate_weight <= 1.0:
+            raise ValueError("duplicate_weight must lie in (0, 1]")
+        if self.max_per_kind < 1:
+            raise ValueError("max_per_kind must be at least 1")
+        if self.max_nodes_per_finding < 1:
+            raise ValueError("max_nodes_per_finding must be at least 1")
+
+
+@dataclass(frozen=True)
+class TraceConfig:
+    """Settings of the query trace layer (D38) - what an application recorded.
+
+    A trace is a recorded CALL, not a re-runnable one: the viewer it feeds
+    reads what already happened, so it never loads a second copy of the graph
+    and the vector store into memory. That only works while the record stands
+    on its own, which is why `include_edges` and `include_texts` default on
+    and turning either off is a documented downgrade rather than a saving.
+
+    Attributes:
+        enabled: Whether `SpiywebIndex` records its queries at all. On by
+            default and in memory only - the ring buffer costs a few
+            megabytes and nothing leaves the process.
+        capacity: How many records the in-memory ring buffer keeps. The
+            oldest is dropped once it is full, so a long-running application
+            never grows without bound.
+        directory: Where to ALSO append the records as JSONL. `None` - the
+            default - means the disk is never touched: passage text lands in
+            the file, so writing has to be an explicit choice.
+        include_texts: Whether each traced atom carries the text it was
+            indexed as. Off makes the record unreadable without the corpus;
+            it exists for callers who must not copy passages at all.
+        text_chars: Truncate traced text to this many characters. `0` - the
+            default - keeps it whole.
+        include_edges: Whether the activated subgraph's edges are recorded.
+            Off makes the record undrawable without the graph.
+        max_edges: Overflow guard on the recorded edge count, strongest
+            first. `0` means no limit. A record that hit the guard says so
+            (`edges_truncated`) rather than quietly showing a thinner web.
+    """
+
+    enabled: bool = True
+    capacity: int = 200
+    directory: str | Path | None = None
+    include_texts: bool = True
+    text_chars: int = 0
+    include_edges: bool = True
+    max_edges: int = 4000
+
+    def __post_init__(self) -> None:
+        if self.capacity < 1:
+            raise ValueError("capacity must be at least 1")
+        if self.text_chars < 0:
+            raise ValueError("text_chars must not be negative")
+        if self.max_edges < 0:
+            raise ValueError("max_edges must not be negative")
 
 
 @dataclass(frozen=True)

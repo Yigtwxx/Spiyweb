@@ -19,6 +19,15 @@ if TYPE_CHECKING:
     from collections.abc import Collection, Mapping
 
 
+_MIN_DF_CEILING = 2.0
+"""Lowest document-frequency ceiling the guard may impose.
+
+An entity in fewer than two chunks pairs with nothing, so a ceiling below 2
+drops every entity that could have made an edge. Not a config field: it is
+not a tuning knob but the point below which the layer stops existing.
+"""
+
+
 def build_entity_edges(
     entities: Mapping[str, Collection[str]],
     config: EntityEdgeConfig | None = None,
@@ -32,10 +41,24 @@ def build_entity_edges(
     layer merge. A pair sharing nothing is omitted entirely - `0.0` is never
     emitted, that value belongs to the dedup-suppressed-edge contract.
 
-    Entities mentioned by more than ``max_df_ratio * n_chunks`` chunks are
-    dropped before pairing (strict `>`, so a ratio of `1.0` truly disables the
-    guard): 1/df bounds their weight but not the near-clique of edges they
+    Entities mentioned by more than ``max(2, max_df_ratio * n_chunks)`` chunks
+    are dropped before pairing (strict `>`, so a ratio of `1.0` truly disables
+    the guard): 1/df bounds their weight but not the near-clique of edges they
     would emit. Duplicate mentions of one entity within one chunk count once.
+
+    The floor of 2 is not a rounding nicety, it is what keeps the layer from
+    being structurally impossible on a small corpus. An entity has to appear
+    in at least TWO chunks to produce an edge at all, so a threshold below 2
+    means the layer cannot emit a single one - and at the measured default
+    ratio of 0.02 that is every corpus under 100 chunks. Found on 2026-08-26
+    by running the real pipeline over three documents: the one entity that
+    bridged them (`morgan`, df=2) was dropped against a threshold of 0.16,
+    and the entity layer - the main hop fuel of CLAUDE.md section 2.2 - came
+    out empty without saying so.
+
+    The floor cannot move a sealed number: the smallest measured index holds
+    3336 chunks, where `0.02 * n` is 66.7 and the floor never binds. It binds
+    only where the alternative was an empty layer.
 
     Only chunks that share an entity are ever paired - the inverted index
     keeps the cost at O(mentions + sum(df^2)), never O(n^2) over the corpus.
@@ -57,7 +80,7 @@ def build_entity_edges(
                 )
             mentions.setdefault(entity, set()).add(chunk_id)
 
-    max_df = cfg.max_df_ratio * len(entities)
+    max_df = max(_MIN_DF_CEILING, cfg.max_df_ratio * len(entities))
     weights: dict[tuple[str, str], float] = {}
     for entity in sorted(mentions):
         chunk_ids = mentions[entity]

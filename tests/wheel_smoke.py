@@ -67,4 +67,51 @@ ranked = [node for node, _ in result.ranked()]
 assert ranked == ["A", "C", "D", "B", "F"], ranked
 assert abs(result.energy_of("D") - 2.875) < 1e-9, result.energy_of("D")
 
-print(f"wheel smoke ok: spiyweb {spiyweb.__version__}, {len(spiyweb.__all__)} names")
+# 7. The trace reader works with nothing installed - the D38 claim, measured
+#    on the artifact. A file written by somebody's application, opened by a
+#    process that has no index, no model and no numpy.
+import json  # noqa: E402  - after the zero-dependency assertions, on purpose
+import tempfile  # noqa: E402
+
+from spiyweb.trace import TraceNode, TraceRecord, load_traces  # noqa: E402
+
+record = TraceRecord(
+    trace_id="smoke",
+    sequence=0,
+    recorded_at="2026-08-26T00:00:00.000+00:00",
+    kind="plain",
+    query="does the reader need the index",
+    nodes=(
+        TraceNode(id="A", source_id="a", layer="chunk", energy=5.6, hop=0, votes=1),
+    ),
+    edges=(),
+    paths=(),
+    clusters=(),
+    events=(),
+    stop_reason="threshold",
+    hops_used=0,
+    injected_energy=10.0,
+    threshold=1.5,
+    total_energy=5.6,
+    node_count=1,
+    dedup_mode="off",
+)
+with tempfile.TemporaryDirectory() as folder:
+    written = Path(folder) / "traces.jsonl"
+    written.write_text(json.dumps(record.to_dict()) + chr(10), encoding="utf-8")
+    assert load_traces(written) == (record,), "the trace reader did not round-trip"
+    assert load_traces(Path(folder)) == (record,), "a directory should resolve"
+
+# 8. The browser bundle shipped, so `inspect_url()` has a page to serve. Not
+#    fatal on its own - a wheel built without the front end is still a working
+#    library - but it is the difference between the two, and silence about
+#    which one you have is the failure mode worth naming.
+from spiyweb.viewer import bundle_path  # noqa: E402
+
+bundle = bundle_path()
+page = "with the browser bundle" if bundle is not None else "WITHOUT a bundle"
+
+print(
+    f"wheel smoke ok: spiyweb {spiyweb.__version__}, "
+    f"{len(spiyweb.__all__)} names, {page}"
+)

@@ -12,26 +12,23 @@ from __future__ import annotations
 import time
 from typing import TYPE_CHECKING
 
-from server import ledger as ledger_module
 from server.resources import CACHE
 from server.schemas import (
     ActivationPathDto,
     ComparisonDto,
     ComparisonRowDto,
-    DestroyedDto,
     InspectRequest,
     InspectResponse,
     InspectStats,
     LedgerDto,
     RefusalDto,
     SceneDto,
-    SceneEdgeDto,
-    SceneNodeDto,
     SeedDto,
     ThemeClusterDto,
     WarningDto,
 )
 from server.settings import SETTINGS
+from spiyweb.ledger import build_ledger
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -89,6 +86,13 @@ def run(request: InspectRequest) -> InspectResponse:
         build_scene,
         hop_ring_layout,
         make_similarity,
+    )
+    from spiyweb.viewer.payload import (
+        clusters_payload,
+        ledger_payload,
+        paths_payload,
+        refusal_payload,
+        scene_payload_of,
     )
 
     root = CACHE.index_root(request.index)
@@ -207,7 +211,7 @@ def run(request: InspectRequest) -> InspectResponse:
         baseline_scores=dict(baseline_pairs),
     )
 
-    book = ledger_module.build(result.propagation, graph, propagation)
+    book = build_ledger(result.propagation, graph, propagation)
     paths = activation_paths(result.propagation)
     labels = entity_edge_labels(
         [
@@ -242,78 +246,21 @@ def run(request: InspectRequest) -> InspectResponse:
             scene_ms=scene_ms,
         ),
         scene=SceneDto(
-            nodes=[
-                SceneNodeDto(
-                    id=node.id,
-                    x=node.x,
-                    y=node.y,
-                    rx=rings.get(node.id, (0.5, 0.5))[0],
-                    ry=rings.get(node.id, (0.5, 0.5))[1],
-                    energy=node.energy,
-                    hop=node.hop,
-                    votes=node.votes,
-                    kind=node.kind,
-                    node_layer=node.node_layer,
-                    source_id=node.source_id,
-                    polarity=node.polarity,
-                    disputed=node.disputed,
-                    label=node.label,
-                    title=titles.get(node.id, node.id),
-                    tooltip=node.tooltip,
-                )
-                for node in scene.nodes
-            ],
-            edges=[
-                SceneEdgeDto(
-                    source=edge.source,
-                    target=edge.target,
-                    x1=edge.x1,
-                    y1=edge.y1,
-                    x2=edge.x2,
-                    y2=edge.y2,
-                    rx1=rings.get(edge.source, (0.5, 0.5))[0],
-                    ry1=rings.get(edge.source, (0.5, 0.5))[1],
-                    rx2=rings.get(edge.target, (0.5, 0.5))[0],
-                    ry2=rings.get(edge.target, (0.5, 0.5))[1],
-                    weight=edge.weight,
-                    layer=edge.layer,
-                    layers=list(edge.layers),
-                    kind=edge.kind,
-                    tooltip=edge.tooltip,
-                )
-                for edge in scene.edges
-            ],
-            legend=dict(LAYER_COLORS),
-            layer_order=list(EDGE_LAYER_ORDER),
-            dropped_nodes=scene.dropped_nodes,
-            dropped_edges=scene.dropped_edges,
-            caption=scene.caption,
-            max_hop=max(hops.values(), default=0),
+            **scene_payload_of(
+                scene,
+                rings,
+                titles=titles,
+                legend=LAYER_COLORS,
+                layer_order=EDGE_LAYER_ORDER,
+            )
         ),
         ledger=LedgerDto(
-            injected=book.injected,
-            held=book.held,
-            dissipated=book.dissipated,
-            destroyed=DestroyedDto(
-                conflict=book.destroyed.conflict,
-                conflict_events=book.destroyed.conflict_events,
-                negative_seed=book.destroyed.negative_seed,
-                negative_seed_events=book.destroyed.negative_seed_events,
-                polarity=book.destroyed.polarity,
-                polarity_events=book.destroyed.polarity_events,
-                total=book.destroyed.total,
-            ),
-            residual=book.residual,
-            residual_share=book.residual / book.injected if book.injected else 0.0,
-            mismatch=book.mismatch,
-            tolerance=book.tolerance,
-            balanced=book.balanced,
-            exact=book.exact,
-            notes=list(book.notes),
-            dedup_cuts=len(result.propagation.suppressed),
-            contact_cuts=len(result.contact_suppressed),
-            dedup_taus=list(book.dedup_taus),
-            contact_tau=result.contact_tau,
+            **ledger_payload(
+                book,
+                dedup_cuts=len(result.propagation.suppressed),
+                contact_cuts=len(result.contact_suppressed),
+                contact_tau=result.contact_tau,
+            )
         ),
         comparison=ComparisonDto(
             web=[_row(row) for row in comparison.web],
@@ -324,33 +271,10 @@ def run(request: InspectRequest) -> InspectResponse:
             contact_tau=comparison.contact_tau,
             dedup_enabled=comparison.dedup_enabled,
         ),
-        paths=[
-            ActivationPathDto(
-                node=path.node,
-                steps=list(path.steps),
-                hop=path.hop,
-                energy=path.energy,
-                converging=path.converging,
-                rendered=path.rendered(labels),
-            )
-            for path in paths[:40]
-        ],
-        clusters=[
-            ThemeClusterDto(
-                nodes=list(cluster.nodes),
-                energy=cluster.energy,
-                energy_share=cluster.energy_share,
-                top_node=cluster.top_node,
-            )
-            for cluster in clusters[:12]
-        ],
+        paths=[ActivationPathDto(**row) for row in paths_payload(paths, labels=labels)],
+        clusters=[ThemeClusterDto(**row) for row in clusters_payload(clusters)],
         warnings=warnings,
-        refusal=RefusalDto(
-            stop_reason=report.stop_reason,
-            hop_depth=report.hop_depth,
-            deepest_nodes=list(report.deepest_nodes[:8]),
-            text=report.text,
-        ),
+        refusal=RefusalDto(**refusal_payload(report)),
         seeds=[
             SeedDto(
                 node=node,

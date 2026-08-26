@@ -120,3 +120,30 @@ def test_result_is_independent_of_mapping_insertion_order() -> None:
     assert build_entity_edges(CORPUS, cfg) == build_entity_edges(reordered, cfg), (
         "fixed sorted iteration makes the sums bit-identical on every platform"
     )
+
+
+def test_a_small_corpus_still_gets_an_entity_layer() -> None:
+    """The guard must not make the main hop fuel structurally impossible.
+
+    At the measured default ratio of 0.02, `max_df_ratio * n_chunks` falls
+    below 2 for every corpus under 100 chunks - and an entity needs two
+    chunks to pair at all. The layer therefore came out empty on any small
+    corpus, silently. Found on 2026-08-26 by running the real pipeline over
+    three documents: `morgan` bridged two of them and was dropped against a
+    threshold of 0.16.
+    """
+    entities = {
+        "a:0": ["morgan", "tesla"],
+        "a:1": ["morgan"],
+        "b:0": ["marconi"],
+    }
+    edges = build_entity_edges(entities, EntityEdgeConfig())
+    assert edges == [("a:0", "a:1", 0.5)], edges
+
+
+def test_the_floor_never_binds_on_a_corpus_the_ratio_can_serve() -> None:
+    """It cannot move a sealed number: 0.02 * 3336 is 66.7, far above 2."""
+    shared = {f"c:{i}": ["everywhere"] for i in range(200)}
+    # df = 200 against a ceiling of 0.02 * 200 = 4: the guard still fires,
+    # exactly as it did before the floor existed.
+    assert build_entity_edges(shared, EntityEdgeConfig()) == []

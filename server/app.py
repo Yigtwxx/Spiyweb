@@ -16,7 +16,7 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from server._paths import WEB_DIST
+from server._paths import DATA_ROOT, WEB_DIST
 from server.inspect_api import QueryProblem
 from server.inspect_api import run as run_inspect
 from server.resources import CACHE, EDGE_LAYERS, MissingExtra
@@ -48,12 +48,34 @@ from server.schemas import (
 )
 from server.stream import event_stream
 from server.system import read_gpu, read_ollama
+from spiyweb import __version__
 
 app = FastAPI(
     title="Spiyweb",
     description="Browser face of the spreading-activation rig.",
     version="0.1.0",
 )
+
+
+@app.get("/api/capabilities")
+def capabilities() -> dict[str, object]:
+    """What THIS server is, so one bundle serves the rig and the viewer.
+
+    Added in Faz 2.5. `spiyweb.viewer` answers the same route with
+    `runs: false`, and the page branches on the answer instead of probing
+    for a 404 and guessing from it.
+    """
+    return {
+        "version": __version__,
+        "mode": "rig",
+        "origin": str(DATA_ROOT),
+        "live": True,
+        "colored": False,
+        "count": 0,
+        "runs": True,
+        "bundle": WEB_DIST.exists(),
+    }
+
 
 _ARTIFACTS = (
     "nodes.json",

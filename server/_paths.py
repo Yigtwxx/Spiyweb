@@ -20,6 +20,9 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DATA_ROOT = REPO_ROOT / "data"
-WEB_DIST = REPO_ROOT / "web" / "dist"
+WEB_DIST = REPO_ROOT / "src" / "spiyweb" / "viewer" / "static"
+"""The built browser bundle. It lives inside the package as of Faz 2.5 -
+`inspect_url()` serves it from an installed wheel, so there is exactly one
+built bundle and both front ends read it from the same place."""
 RUN_LOCK = DATA_ROOT / ".run.lock"
 LOG_DIR = DATA_ROOT / ".runs"

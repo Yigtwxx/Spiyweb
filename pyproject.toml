@@ -48,18 +48,44 @@ web = [
 ]
 index = ["spiyweb[store]", "spiyweb[embed]", "spiyweb[entity]"]
 
+# One terminal command, four verbs, each wrapping something the Python API
+# already does. `spiyweb version` must work on a bare install - that is
+# exactly when someone needs to be told which extra is missing - so
+# `spiyweb.cli` imports with no dependency of its own.
+[project.scripts]
+spiyweb = "spiyweb.cli:main"
+
 [project.urls]
 Homepage = "https://github.com/Yigtwxx/spiyweb"
 Source = "https://github.com/Yigtwxx/spiyweb"
 
 [dependency-groups]
-dev = ["pytest>=8.0", "ruff>=0.6"]
+# `httpx` is not a runtime dependency of anything: `fastapi.testclient` needs
+# it, and the `web` extra deliberately does not carry a test client into a
+# user's environment.
+dev = ["pytest>=8.0", "ruff>=0.6", "httpx>=0.27"]
 
 # The version has ONE source: `__init__.py`. A second copy in this file
 # drifts sooner or later, and a drifted version number lies about which
 # code produced a measurement artifact.
 [tool.hatch.version]
 path = "src/spiyweb/__init__.py"
+
+# `[tool.hatch.build]` and not the wheel target alone: `uv build` (or
+# `python -m build`) builds the SDIST first and then builds the wheel FROM
+# that sdist. Naming the bundle only under the wheel target meant the sdist
+# excluded it - it is gitignored - and the wheel built from that sdist came
+# out 229 KB with no page in it, while `uv build --wheel` produced the right
+# 1.4 MB artifact. Two commands, two different wheels, and the broken one is
+# the one a release would have used. Found 2026-08-26, before any upload.
+[tool.hatch.build]
+# The compiled browser bundle is gitignored - a public history has no business
+# carrying minified JavaScript - and gitignored files are excluded by default,
+# so it has to be named here to reach either artifact. Named as a pattern
+# rather than force-included: a checkout that never ran `npm run build` simply
+# ships no bundle, and the viewer says so in a sentence, instead of the build
+# failing on a missing directory.
+artifacts = ["src/spiyweb/viewer/static/**/*"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/spiyweb"]

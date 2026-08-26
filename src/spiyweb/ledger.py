@@ -1,5 +1,11 @@
 """The energy ledger: where the injected energy actually went.
 
+Promoted out of `server/` in Faz 2.5. It was written for the browser face,
+but it is pure arithmetic over a propagation result - no HTTP, no numpy, no
+I/O - and a trace record carries one now, so a reader with nothing installed
+can still audit a run's energy. Keeping it behind a FastAPI extra would have
+meant the zero-dependency trace reader could not open its own files.
+
 CLAUDE.md §2.1 makes an auditable claim — dedup REDISTRIBUTES energy, while
 contradictions, negative seeds and negative-polarity atoms DESTROY it, and
 nothing else creates or destroys any. This module turns that claim into four
@@ -35,6 +41,8 @@ if TYPE_CHECKING:
     from spiyweb.config import PropagationConfig
     from spiyweb.core.graph import Graph
     from spiyweb.core.propagate import PropagationResult
+
+__all__ = ["Destroyed", "Ledger", "build_ledger", "destroyed_per_node"]
 
 
 @dataclass(frozen=True)
@@ -123,7 +131,7 @@ def _live_neighbours(
     return live
 
 
-def build(
+def build_ledger(
     result: PropagationResult,
     graph: Graph,
     config: PropagationConfig,

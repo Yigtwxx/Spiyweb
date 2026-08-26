@@ -9,6 +9,7 @@ never become seeds) and the deliberately partial result contract.
 
 from __future__ import annotations
 
+import warnings
 from dataclasses import fields
 
 import pytest
@@ -414,3 +415,46 @@ def test_the_result_reports_which_dedup_rules_actually_ran() -> None:
         dedup=DedupConfig(floor=0.90, min_pairs=100, distinct_sources=False),
     )
     assert cosine_only.dedup_mode == "cosine_only"
+
+
+def test_a_configuration_that_cannot_spread_says_so() -> None:
+    """The shipped defaults returned hop-0-only webs on a real index.
+
+    Five seeds share 10.0 energy, so the strongest holds ~2.05 and forwards
+    at most 1.23 - against a threshold of 1.5. Nothing can ever clear it, so
+    the web stops at first contact: `top-k` with extra steps, which is the
+    one thing this library exists to not be. CLAUDE.md sizes the threshold
+    for the TWO-seed worked example (§2.1) and the seed width at 5 (§4);
+    together they cannot propagate. Measured 2026-08-26.
+    """
+    from spiyweb.config import PropagationConfig
+    from spiyweb.retrieve import _check_propagation_can_spread
+
+    five = {f"n{i}": 0.78 for i in range(5)}
+    with pytest.warns(UserWarning, match="cannot spread past the seed"):
+        _check_propagation_can_spread(five, PropagationConfig())
+
+
+def test_the_canonical_two_seed_example_is_never_warned_about() -> None:
+    """§2.6's trace is the documented case; warning on it would be noise."""
+    from spiyweb.config import PropagationConfig
+    from spiyweb.retrieve import _check_propagation_can_spread
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        _check_propagation_can_spread({"A": 0.9, "C": 0.7}, PropagationConfig())
+
+
+def test_a_profile_clears_the_bar() -> None:
+    """Every named profile propagates; that is why they exist."""
+    from spiyweb.config import PropagationConfig, RetrievalConfig
+    from spiyweb.profiles import PROFILES
+    from spiyweb.retrieve import _check_propagation_can_spread
+
+    five = {f"n{i}": 0.78 for i in range(5)}
+    for name, profile in PROFILES.items():
+        settings = profile.as_retrieval(RetrievalConfig()).propagation
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            _check_propagation_can_spread(five, settings)
+        assert isinstance(settings, PropagationConfig), name

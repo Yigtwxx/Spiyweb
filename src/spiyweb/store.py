@@ -30,6 +30,10 @@ from spiyweb.config import SemanticEdgeConfig
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
+_STORE_SCHEMA_VERSION = 1
+"""Version of the `.npz` layout. Bumped only when a reader must behave
+differently; a file without it reads as 0 and loads unchanged."""
+
 
 def build_semantic_edges_fast(
     ids: Sequence[str],
@@ -115,12 +119,13 @@ def build_semantic_edges_fast(
 class VectorStore:
     """Exact-search vector store mapping string ids to embeddings."""
 
-    def __init__(self, dimension: int) -> None:
+    def __init__(self, dimension: int, *, model_name: str | None = None) -> None:
         if dimension < 1:
             raise ValueError("dimension must be at least 1")
         self._dimension = dimension
         self._ids: list[str] = []
         self._known: set[str] = set()
+        self._model_name = model_name
         self._index = faiss.IndexFlatIP(dimension)
 
     @property
@@ -174,16 +179,38 @@ class VectorStore:
             if position >= 0
         ]
 
-    def save(self, path: str | Path) -> None:
+    @property
+    def model_name(self) -> str | None:
+        """Which embedding model produced these vectors, when recorded.
+
+        `None` for a store built in memory and for every file written before
+        2026-08-25 - including the four sealed Phase 1 indexes. Absence means
+        "unknown", never "mismatch": a check that cannot be made is not a
+        failure, and `SpiywebIndex` treats it that way.
+        """
+        return self._model_name
+
+    def save(self, path: str | Path, *, model_name: str | None = None) -> None:
         """Write ids and vectors to one compressed `.npz` file.
 
         The file handle form sidesteps numpy's suffix magic: the file lands at
         exactly `path`, so `load(path)` always finds what `save(path)` wrote.
+
+        `model_name` and the schema version ride along as extra arrays. They
+        are what turns "queried with a different embedding model" from a
+        silently wrong answer into a stated one: dimensions can match across
+        two unrelated models, and cosine against the wrong space returns
+        confident nonsense.
         """
         vectors = self._index.reconstruct_n(0, len(self._ids))
+        name = model_name if model_name is not None else self._model_name
         with Path(path).open("wb") as handle:
             np.savez_compressed(
-                handle, ids=np.array(self._ids, dtype=np.str_), vectors=vectors
+                handle,
+                ids=np.array(self._ids, dtype=np.str_),
+                vectors=vectors,
+                schema_version=np.array(_STORE_SCHEMA_VERSION),
+                model_name=np.array("" if name is None else name, dtype=np.str_),
             )
 
     @classmethod
@@ -195,6 +222,12 @@ class VectorStore:
         with np.load(resolved) as payload:
             ids = [str(chunk_id) for chunk_id in payload["ids"]]
             vectors = payload["vectors"]
+            # Both keys are absent in files written before 2026-08-25; an
+            # older artifact loads unchanged rather than needing a migration.
+            recorded = (
+                str(payload["model_name"]) if "model_name" in payload.files else ""
+            )
         store = cls(int(vectors.shape[1]))
         store.add(ids, vectors)
+        store._model_name = recorded or None
         return store

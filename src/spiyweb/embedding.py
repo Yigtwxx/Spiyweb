@@ -89,6 +89,17 @@ class SentenceTransformerEmbedder:
         self._config = config if config is not None else EmbeddingConfig()
         self._model = model if model is not None else self._load_model()
 
+    @property
+    def model_name(self) -> str:
+        """Which model produced these vectors - receipt data, not behaviour.
+
+        `build_index` records it in the store so a query embedded by a
+        different model can be refused instead of silently answered: two
+        unrelated models can share a dimension, and cosine across two spaces
+        returns confident nonsense.
+        """
+        return self._config.model
+
     def _load_model(self) -> EncoderLike:
         try:
             from sentence_transformers import SentenceTransformer

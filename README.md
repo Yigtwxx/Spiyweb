@@ -53,8 +53,29 @@ entire value proposition.
 
 ## Try it
 
-The core is pure Python with no dependencies. Similarities come from the
-caller; `core/` never computes them.
+Four commands, from an empty directory to a picture of what the retrieval did:
+
+```bash
+pip install "spiyweb[index,web]"
+python -m spacy download en_core_web_sm
+
+spiyweb index docs/ my-index          # a directory of .txt/.md -> an index
+spiyweb query my-index "what happened afterwards"
+spiyweb view my-index                 # opens the browser face on a link
+spiyweb lint my-index                 # what is wrong with the CORPUS
+```
+
+`lint` is the diagnostic that needs no query: it reads the graph's shape and
+reports islands nothing bridges, hubs that grind arriving energy into dust,
+near-identical passages that will compete for one seed slot, and the sources
+that contradict the rest of the corpus.
+
+`spiyweb version` says which extras are installed and prints the `pip install`
+line for the ones that are not — it works on a bare install, which is exactly
+when you need it to.
+
+The core itself is pure Python with no dependencies at all. Similarities come
+from the caller; `core/` never computes them.
 
 ```bash
 git clone https://github.com/Yigtwxx/spiyweb && cd spiyweb
@@ -86,21 +107,59 @@ result.stop_reason  # 'threshold' — the web stopped itself
 `A_dup` is missing because its edge was suppressed and its share redistributed.
 Neither outcome came from a result-count parameter.
 
+## Bring your own corpus
+
+```bash
+pip install "spiyweb[index]"
+```
+
+```python
+import spiyweb
+from spiyweb.indexing import DocumentInput, TextUnit, build_index
+from spiyweb.indexing import SentenceTransformerEmbedder, load_spacy_pipeline
+
+docs = [
+    DocumentInput(source_id="handbook", units=(TextUnit(text=part) for part in parts))
+    for parts in my_documents
+]
+build_index(
+    docs,
+    "data/mydocs",
+    embedder=SentenceTransformerEmbedder(),
+    entity_pipeline=load_spacy_pipeline(),
+)
+
+with spiyweb.open_index("data/mydocs") as index:
+    answer = index.retrieve("who signed off on the change?", profile="explore")
+
+    for passage in answer.passages:
+        print(f"{passage.energy:5.2f}  {passage.votes} votes  {passage.text[:70]}")
+
+    print(answer.confidence)  # total energy, node count, hop depth
+    print(answer.dedup_mode)  # which duplicate rules actually ran
+    for path in answer.paths():  # how the energy reached each node
+        print(path)
+```
+
+There is no `k`. The web stops when its energy falls below the threshold -
+that self-termination is the argument against `top-k`, so a `k=` parameter
+here would quietly reintroduce the thing being argued against. Slice
+`answer.passages` if you want fewer.
+
+`open_index` wires duplicate suppression correctly, which is not a detail:
+the mechanism needs a config AND a similarity backend, and this project's own
+measurement campaign ran with it silently off for want of the second half.
+`answer.dedup_mode` is the receipt.
+
 ## Public API
 
 `import spiyweb` is the query-time contract: everything in `spiyweb.__all__`
-and nothing else. Building an index is a different job with a different
-dependency profile, so it has its own front door:
-
-```python
-from spiyweb.indexing import DocumentInput, VectorStore, chunk_documents
-```
-
-That module imports with nothing installed; only the FAISS-bound names ask for
-`pip install "spiyweb[store]"`. Anything reached through a submodule path
+and nothing else. `spiyweb.indexing` is the index-time contract, on the same
+terms; it imports with nothing installed, and only the FAISS-bound names ask
+for `pip install "spiyweb[store]"`. Anything reached through a submodule path
 (`spiyweb.core.*`, `spiyweb.evaluation.*`) is internal and may change without
-notice. The surface is snapshot-tested, and changes to it are written down in
-[CHANGELOG.md](CHANGELOG.md).
+notice. Both surfaces are snapshot-tested, and changes to them are written
+down in [CHANGELOG.md](CHANGELOG.md).
 
 ## What is different
 
@@ -125,11 +184,48 @@ RAPTOR). Spiyweb's claimed differentiators are elsewhere:
 
 ## Interfaces
 
-One, an optional extra, outside the package — `pip install spiyweb` pulls in
-none of it.
+### See what your retrieval did
 
-**Browser UI** (`server/` + `web/`) — a FastAPI process in front of the
-library, and a Vite/React front end:
+Every query an open index answers is recorded, and the viewer ships with the
+package:
+
+```python
+import spiyweb
+
+index = spiyweb.open_index("my-index")
+answer = index.retrieve("what happened afterwards")
+print(index.inspect_url())  # http://127.0.0.1:PORT/?token=...
+```
+
+The link opens the activated web, the energy ledger and the activation path
+of every atom — for the calls your application actually made, not for a demo
+query. It binds `127.0.0.1` only, takes a port the OS picks so it never
+fights your own server, and guards every API route with a token minted for
+that process.
+
+Traces are held in memory (the last 200) and cost no disk unless asked:
+
+```python
+index = spiyweb.open_index("my-index", trace=spiyweb.TraceConfig(directory="traces"))
+```
+
+That writes JSONL, and a machine that holds no index can read it back:
+
+```python
+from spiyweb.viewer import serve_file
+
+with serve_file("traces/traces.jsonl") as viewer:
+    print(viewer.url)
+```
+
+Needs `pip install "spiyweb[web]"`; the library itself still installs with no
+dependencies at all.
+
+### The measurement rig
+
+`server/` + `web/` — a FastAPI process in front of the library, and a
+Vite/React front end. This half stays in the repository: it owns `data/` and
+supervises benchmark runs, and neither belongs in somebody else's wheel.
 
 ```bash
 pip install -e ".[web]"

@@ -403,3 +403,139 @@ export type BootstrapReport = {
   diffs: PairedDiff[];
   by_hop: { hops: number; questions: number; scores: Record<string, number> }[];
 };
+
+// --- the trace viewer (Faz 2.5) -------------------------------------------
+
+/**
+ * What the server on the other end of this page actually is.
+ *
+ * One bundle serves two products: the repository's measurement rig, which
+ * owns `data/` and supervises benchmark runs, and `spiyweb.viewer`, which
+ * ships in the wheel and shows an application its own recorded calls. The
+ * page asks rather than guesses — probing for a 404 and inferring from it
+ * would break the first time an endpoint was renamed.
+ */
+export interface Capabilities {
+  version: string;
+  /** `"rig"`, `"store"` (a live index's ring buffer) or `"file"` (JSONL). */
+  mode: string;
+  origin: string;
+  /** Whether a new question can be asked, or only recorded ones read. */
+  live: boolean;
+  colored: boolean;
+  count: number;
+  /** Whether the measurement-run views exist on this server. */
+  runs: boolean;
+  bundle: boolean;
+}
+
+/** One row of the trace list — never the nodes, edges or passage text. */
+export interface TraceSummary {
+  trace_id: string;
+  sequence: number;
+  recorded_at: string;
+  kind: string;
+  query: string;
+  node_count: number;
+  total_energy: number;
+  hops_used: number;
+  stop_reason: string;
+  elapsed_ms: number;
+  dedup_mode: string;
+  edge_count: number;
+  bridge_count: number;
+  balanced: boolean | null;
+}
+
+export interface TraceListDto {
+  total: number;
+  offset: number;
+  limit: number;
+  traces: TraceSummary[];
+}
+
+export interface TraceNodeDto {
+  id: string;
+  source_id: string;
+  layer: string;
+  energy: number;
+  hop: number;
+  votes: number;
+  text: string;
+  seed_similarity: number | null;
+  polarity: number;
+  disputed: boolean;
+  suppressed_by: string;
+}
+
+export interface TracePathDto {
+  node: string;
+  steps: string[];
+  hop: number;
+  energy: number;
+  converging: number;
+}
+
+export interface TraceClusterDto {
+  nodes: string[];
+  energy: number;
+  energy_share: number;
+  top_node: string;
+  colors: string[];
+}
+
+export interface TraceEventDto {
+  kind: string;
+  node: string;
+  other: string;
+  amount: number;
+  hop: number;
+}
+
+/** The flattened energy ledger a record carries with it. */
+export interface TraceLedgerDto {
+  injected: number;
+  held: number;
+  dissipated: number;
+  destroyed_conflict: number;
+  destroyed_negative_seed: number;
+  destroyed_polarity: number;
+  residual: number;
+  mismatch: number;
+  tolerance: number;
+  balanced: boolean;
+  exact: boolean;
+  dedup_cuts: number;
+  notes: string[];
+}
+
+/** One recorded retrieval, complete enough to be drawn on its own. */
+export interface TraceRecordDto {
+  schema_version: number;
+  trace_id: string;
+  sequence: number;
+  recorded_at: string;
+  kind: string;
+  query: string;
+  parts: Record<string, string>;
+  index: string;
+  profile: string;
+  elapsed_ms: number;
+  nodes: TraceNodeDto[];
+  edges: { source: string; target: string; weight: number }[];
+  paths: TracePathDto[];
+  clusters: TraceClusterDto[];
+  events: TraceEventDto[];
+  bridges: Record<string, string[]>;
+  stop_reason: string;
+  hops_used: number;
+  injected_energy: number;
+  threshold: number;
+  total_energy: number;
+  node_count: number;
+  dedup_mode: string;
+  dedup_thresholds: number[];
+  settings: Record<string, number | string | boolean>;
+  ledger: TraceLedgerDto | null;
+  edges_truncated: boolean;
+}

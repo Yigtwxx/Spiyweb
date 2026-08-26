@@ -1,5 +1,6 @@
 import type {
   AtomHit,
+  Capabilities,
   BootstrapReport,
   IndexDetail,
   IndexSummary,
@@ -11,6 +12,9 @@ import type {
   RunRequest,
   RunStatus,
   SystemStatus,
+  TraceListDto,
+  TraceRecordDto,
+  SceneDto,
 } from "./types";
 
 /** A failed request, carrying the server's own explanation. */
@@ -29,10 +33,41 @@ export class ApiFailure extends Error {
   }
 }
 
+/**
+ * The viewer's process token, taken from the URL once and kept in memory.
+ *
+ * `spiyweb.viewer` hands out `http://127.0.0.1:PORT/?token=...` and guards
+ * every `/api/*` route with it. The token moves out of the query string and
+ * into a header on the first request: a URL is copied into chat windows and
+ * written to proxy logs, a header is not, and the address bar keeps showing
+ * a link that still works if someone does copy it.
+ *
+ * The repository rig serves no token and needs none - it is bound to a
+ * developer's own machine and predates this - so an absent token is not an
+ * error here. The server is the one that decides.
+ */
+const TOKEN: string | null = (() => {
+  const params = new URLSearchParams(window.location.search);
+  const found = params.get("token");
+  if (!found) return null;
+  params.delete("token");
+  const rest = params.toString();
+  window.history.replaceState(
+    null,
+    "",
+    `${window.location.pathname}${rest ? `?${rest}` : ""}`,
+  );
+  return found;
+})();
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
     ...init,
-    headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
+    headers: {
+      "Content-Type": "application/json",
+      ...(TOKEN ? { "X-Spiyweb-Token": TOKEN } : {}),
+      ...(init?.headers ?? {}),
+    },
   });
   if (!response.ok) {
     // FastAPI puts a plain string in `detail`; our own errors send a shape.
@@ -51,6 +86,17 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  capabilities: () => request<Capabilities>("/api/capabilities"),
+  traces: (limit = 50, offset = 0) =>
+    request<TraceListDto>(`/api/traces?limit=${limit}&offset=${offset}`),
+  trace: (id: string) => request<TraceRecordDto>(`/api/traces/${id}`),
+  traceScene: (id: string, maxNodes = 300) =>
+    request<SceneDto>(`/api/traces/${id}/scene?max_nodes=${maxNodes}`),
+  ask: (body: { query?: string; parts?: Record<string, string>; profile?: string | null }) =>
+    request<TraceRecordDto>("/api/query", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
   indexes: () => request<IndexSummary[]>("/api/indexes"),
   index: (name: string) => request<IndexDetail>(`/api/indexes/${name}`),
   atoms: (index: string, q: string, signal?: AbortSignal) =>

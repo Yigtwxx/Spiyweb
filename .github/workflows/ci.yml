@@ -42,6 +42,40 @@ jobs:
       - name: Test
         run: uv run pytest
 
+  web:
+    # The browser face is TypeScript, and until Faz 2.5 nothing here compiled
+    # it: a type error or a broken build reached main freely because Python
+    # CI cannot see it. It ships inside the wheel now, so a bundle that does
+    # not build is a wheel that does not work.
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install exactly the lockfile
+        run: npm ci
+        working-directory: web
+
+      - name: Lint
+        run: npm run lint
+        working-directory: web
+
+      - name: Build - `tsc -b` first, so a type error fails here
+        run: npm run build
+        working-directory: web
+
+      - name: The bundle landed inside the package
+        # `vite.config.ts` builds into `src/spiyweb/viewer/static`, not into
+        # `web/dist`. If that ever silently reverts, the wheel job below
+        # would quietly ship a viewer with no page in it.
+        run: test -f src/spiyweb/viewer/static/index.html
+
   wheel:
     # The zero-dependency rule is a PACKAGING claim, and the `check` job
     # structurally cannot test it: `uv sync --extra store --extra entity
@@ -65,8 +99,46 @@ jobs:
         with:
           enable-cache: true
 
-      - name: Build the wheel
-        run: uv build --wheel
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Build the browser bundle into the package
+        # Before the wheel, deliberately: `artifacts` in pyproject.toml packs
+        # `src/spiyweb/viewer/static` if it exists and shrugs if it does not,
+        # so building afterwards would produce a wheel whose `inspect_url()`
+        # has no page to serve - and nothing downstream would notice.
+        run: npm ci && npm run build
+        working-directory: web
+
+      - name: Build BOTH artifacts, the way a release does
+        # `uv build` and not `uv build --wheel`: the two-target build makes
+        # the sdist first and then builds the wheel FROM it, which is the
+        # path a release takes and the only one that catches a file the
+        # sdist forgot. On 2026-08-26 it produced a 229 KB wheel with no
+        # browser bundle while `--wheel` produced the right 1.4 MB one.
+        run: uv build
+
+      - name: Both artifacts carry the browser bundle
+        run: |
+          python - <<'PY'
+          import glob, tarfile, zipfile
+
+          names = zipfile.ZipFile(sorted(glob.glob("dist/*.whl"))[-1]).namelist()
+          packed = [n for n in names if n.startswith("spiyweb/viewer/static/")]
+          assert "spiyweb/viewer/static/index.html" in names, "no bundle in the wheel"
+
+          sdist = tarfile.open(sorted(glob.glob("dist/*.tar.gz"))[-1]).getnames()
+          in_sdist = [n for n in sdist if "viewer/static" in n]
+          assert in_sdist, "no bundle in the sdist - a release wheel built from it would have none"
+
+          print(f"bundle ok: {len(packed)} in the wheel, {len(in_sdist)} in the sdist")
+          PY
+
+      - name: The artifacts are fit to upload
+        run: uvx twine check dist/*
 
       - name: Install it into an empty environment - no extras, no dev group
         run: |
@@ -89,3 +161,11 @@ jobs:
 
       - name: Smoke the artifact
         run: .wheelenv/bin/python tests/wheel_smoke.py
+
+      - name: The terminal command was registered, and runs with no extras
+        # `spiyweb version` exists to tell someone which extra is missing, so
+        # an extras-free environment is the one place it MUST work. Every row
+        # reading "not installed" here is the correct answer.
+        run: |
+          .wheelenv/bin/spiyweb version
+          .wheelenv/bin/spiyweb --version

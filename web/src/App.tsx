@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { api } from "./lib/api";
 import { share } from "./lib/format";
 import type {
+  Capabilities,
   IndexDetail,
   IndexSummary,
   RunStatus,
@@ -10,10 +11,117 @@ import type {
 } from "./lib/types";
 import { InspectView } from "./views/InspectView";
 import { RunsView } from "./views/RunsView";
+import { TracesView } from "./views/TracesView";
 
 type View = "inspect" | "runs";
 
+/**
+ * One bundle, two products.
+ *
+ * The same compiled page is served by two very different processes: the
+ * repository's measurement rig, which owns `data/` and supervises benchmark
+ * runs, and `spiyweb.viewer`, which ships inside the wheel and shows an
+ * application its own recorded calls. Faz 2.5 made the second one exist, and
+ * building a second front end for it would have meant two copies of the
+ * canvas, the ledger strip and the API client drifting apart.
+ *
+ * So the page ASKS. `/api/capabilities` is answered by both servers, and the
+ * shell below is chosen from the answer — never by probing an endpoint and
+ * inferring from a 404, which stops being true the day a route is renamed.
+ */
 export default function App() {
+  const [capabilities, setCapabilities] = useState<Capabilities | null>(null);
+  const [failed, setFailed] = useState<string | null>(null);
+
+  useEffect(() => {
+    api
+      .capabilities()
+      .then(setCapabilities)
+      .catch((error: Error) => setFailed(error.message));
+  }, []);
+
+  if (failed)
+    return (
+      <main className="mx-auto max-w-[48rem] px-4 py-16">
+        <h1 className="font-display text-2xl tracking-[0.22em]">SPIYWEB</h1>
+        <p className="font-plate mt-4" role="alert">
+          This page could not reach its server: {failed}
+        </p>
+        <p
+          className="font-plate mt-2 italic"
+          style={{ color: "var(--color-ink-quiet)" }}
+        >
+          If you opened a bare address, use the link the viewer printed — it
+          carries the token that every API route here requires.
+        </p>
+      </main>
+    );
+  if (!capabilities) return null;
+  return capabilities.runs ? (
+    <RigShell />
+  ) : (
+    <ViewerShell capabilities={capabilities} />
+  );
+}
+
+/**
+ * The wheel's viewer: recorded calls, and a question box where there is an
+ * index behind the page. No index picker and no run controls, because this
+ * process has exactly one index and supervises nothing.
+ */
+function ViewerShell({ capabilities }: { capabilities: Capabilities }) {
+  return (
+    <>
+      <a className="skip-link" href="#main">
+        Skip to content
+      </a>
+      <header
+        className="sticky top-0 z-10 border-b"
+        style={{
+          borderColor: "var(--color-rule-hair)",
+          background:
+            "color-mix(in oklab, var(--color-navy-900) 88%, transparent)",
+          backdropFilter: "blur(6px)",
+        }}
+      >
+        <div className="mx-auto flex max-w-[1600px] flex-wrap items-end gap-x-6 gap-y-2 px-4 py-3">
+          <div>
+            <h1
+              className="font-display text-2xl leading-none tracking-[0.22em]"
+              style={{ color: "var(--color-ink)" }}
+            >
+              SPIYWEB
+            </h1>
+            <p
+              className="font-plate italic"
+              style={{ color: "var(--color-rule)", fontSize: "var(--text-sm)" }}
+            >
+              {capabilities.live
+                ? "what this application retrieved — and what it would retrieve"
+                : "what this application retrieved"}
+            </p>
+          </div>
+          <div
+            className="ml-auto flex items-center gap-4 font-mono text-xs"
+            style={{ color: "var(--color-ink-quiet)" }}
+          >
+            <span title={capabilities.origin}>
+              {capabilities.mode === "file" ? "trace file" : "live index"}
+            </span>
+            <span>v{capabilities.version}</span>
+          </div>
+        </div>
+      </header>
+
+      <main id="main" className="mx-auto max-w-[1600px] px-4 py-4">
+        <TracesView capabilities={capabilities} />
+      </main>
+    </>
+  );
+}
+
+/** The repository rig: index picker, live inspection, measurement runs. */
+function RigShell() {
   const [indexes, setIndexes] = useState<IndexSummary[]>([]);
   const [index, setIndex] = useState<string>("");
   const [detail, setDetail] = useState<IndexDetail | null>(null);

@@ -4,6 +4,7 @@ from spiyweb.config import (
     ColoredRetrievalConfig,
     ConflictConfig,
     ConsolidationConfig,
+    CorpusLintConfig,
     DedupConfig,
     EdgeLayer,
     EmbeddingConfig,
@@ -25,6 +26,7 @@ from spiyweb.config import (
     SemanticEdgeConfig,
     StructuralEdgeConfig,
     ThermalConfig,
+    TraceConfig,
 )
 from spiyweb.core.colors import ColoredResult, propagate_colored
 from spiyweb.core.conflict import (
@@ -43,6 +45,8 @@ from spiyweb.edges.consolidate import ConsolidationReport, EdgeUsage, prune_laye
 from spiyweb.edges.derivation import build_derivation_edges
 from spiyweb.edges.learned import LearnedLayer
 from spiyweb.edges.nli import NLIModel, build_nli_edges
+from spiyweb.ledger import Destroyed, Ledger, build_ledger, destroyed_per_node
+from spiyweb.lint import Finding, LintReport, lint_corpus, source_summary
 from spiyweb.nli import TransformersNLIModel, contradiction_label_index
 from spiyweb.nodes.propositions import Proposition, extract_propositions
 from spiyweb.output import (
@@ -69,9 +73,17 @@ from spiyweb.retrieve import (
     retrieve,
     retrieve_colored,
 )
+from spiyweb.session import (
+    Answer,
+    ColoredAnswer,
+    Passage,
+    SpiywebIndex,
+    open_index,
+)
 from spiyweb.thermal import ThermalSession
+from spiyweb.trace import TraceLedger, TraceRecord, TraceStore, load_traces
 
-__version__ = "0.0.1"
+__version__ = "0.1.2"
 
 __all__ = [
     "COMPARE",
@@ -81,6 +93,8 @@ __all__ = [
     "AbsorptionRecord",
     "Activation",
     "ActivationPath",
+    "Answer",
+    "ColoredAnswer",
     "ColoredResult",
     "ColoredRetrievalConfig",
     "ColoredRetrievalResult",
@@ -90,7 +104,9 @@ __all__ = [
     "ConflictRecord",
     "ConsolidationConfig",
     "ConsolidationReport",
+    "CorpusLintConfig",
     "DedupConfig",
+    "Destroyed",
     "DisputeRecord",
     "DisputeWarning",
     "EdgeLayer",
@@ -98,12 +114,15 @@ __all__ = [
     "EmbeddingConfig",
     "EntityEdgeConfig",
     "EntityExtractionConfig",
+    "Finding",
     "GapWarning",
     "Graph",
     "LLMConfig",
     "LayerWeights",
     "LearnedLayer",
     "LearnedLayerConfig",
+    "Ledger",
+    "LintReport",
     "MassConfig",
     "NLICandidateConfig",
     "NLIEdgeConfig",
@@ -114,6 +133,7 @@ __all__ = [
     "Node",
     "NodeLayer",
     "OutputConfig",
+    "Passage",
     "Polarity",
     "PolarityConfig",
     "Profile",
@@ -127,33 +147,44 @@ __all__ = [
     "SeedSource",
     "SemanticEdgeConfig",
     "SimilarityFn",
+    "SpiywebIndex",
     "StructuralEdgeConfig",
     "ThemeCluster",
     "ThermalConfig",
     "ThermalSession",
+    "TraceConfig",
+    "TraceLedger",
+    "TraceRecord",
+    "TraceStore",
     "TransformersNLIModel",
     "__version__",
     "activation_paths",
     "adaptive_threshold",
     "build_conflict_question",
     "build_derivation_edges",
+    "build_ledger",
     "build_nli_edges",
     "build_refusal_report",
     "color_composition",
     "conflict_adjacency",
     "contradiction_label_index",
+    "destroyed_per_node",
     "dispute_warnings",
     "entity_edge_labels",
     "extract_propositions",
     "find_survivor",
     "gap_warnings",
+    "lint_corpus",
+    "load_traces",
     "negative_field",
     "neutralize",
     "node_masses",
+    "open_index",
     "propagate",
     "propagate_colored",
     "prune_layers",
     "retrieve",
     "retrieve_colored",
+    "source_summary",
     "theme_clusters",
 ]

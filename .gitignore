@@ -5,7 +5,15 @@ CLAUDE.local.md
 # CLAUDE.md is the public ground truth; these carry the reasoning, the
 # rejected alternatives and the raw measurement history behind it.
 memory/
-docs/
+# `docs/*` and not `docs/`: git cannot re-include a file whose parent
+# DIRECTORY is excluded, so excluding the contents is what makes the
+# negation below work at all.
+docs/*
+# ...except the release runbook. The rest of docs/ is local measurement
+# record - reports, frozen specs - and stays out of a public history on
+# purpose. This one file is maintainer-facing and CHANGELOG.md points at it,
+# so leaving it untracked would advertise a file no clone contains.
+!docs/releasing.md
 
 # Secrets
 .env
@@ -40,3 +48,9 @@ runs/
 # Browser UI (npm world; never part of the Python package)
 web/node_modules/
 web/dist/
+# The built browser bundle, as of Faz 2.5. Compiled output, kept out of a
+# public history; `pyproject.toml` names it under `artifacts` so the wheel
+# still gets it.
+src/spiyweb/viewer/static/
+.modelenv/
+.modelrun/

@@ -225,6 +225,7 @@ def retrieve(
             "nothing in the index; check that query and passages were embedded "
             "with the same model and the store is not empty"
         )
+    _check_propagation_can_spread(seeds, cfg.propagation)
     absorb, negative_cfg = _absorbing_field(
         index, graph, cfg.propagation, negative_queries, negative_seed
     )
@@ -249,6 +250,53 @@ def retrieve(
         contact_votes=_contact_votes(contact_suppressed, source_of),
         contact_tau=contact_tau,
         dedup_mode=_dedup_mode(similarity, dedup),
+    )
+
+
+def _check_propagation_can_spread(
+    seeds: Mapping[str, float], config: PropagationConfig
+) -> None:
+    """Warn when a second hop is arithmetically impossible for THIS query.
+
+    The seed energy is split among the contacts in proportion to similarity,
+    so the strongest seed holds `seed_energy * s_max / sum(s)` and forwards
+    `damping` of it. That product is the most any hop-1 arrival can be, BEFORE
+    it is divided among neighbours. Under the threshold, nothing can ever
+    clear it and the web stops at first contact - `top-k` with extra steps,
+    the one thing this library exists to not be.
+
+    Computed from the seeds actually selected rather than from `seed_width`:
+    a query that touched two passages splits the energy two ways whatever the
+    configured width says, and warning on the configured number would cry
+    wolf on every small index.
+
+    A real trap, not a hypothetical. CLAUDE.md sets the threshold at 15% of
+    the injected energy (§2.1, sized for the TWO-seed worked example) and the
+    seed width at 5 (§4); together they cannot propagate, so the shipped
+    defaults returned hop-0-only webs on a real index until this was measured
+    on 2026-08-26. Every named profile clears the bar comfortably.
+
+    A warning and not an error: first contact only is a legitimate thing to
+    want, and refusing would break a caller who wants it. But it must not be
+    SILENT, for the same reason the dedup trap now raises - a mechanism that
+    is off while the caller believes it is on is how this project lost a
+    measurement campaign.
+    """
+    total = sum(seeds.values())
+    if total <= 0.0:
+        return
+    strongest = config.seed_energy * max(seeds.values()) / total
+    ceiling = strongest * config.damping
+    if ceiling >= config.threshold:
+        return
+    warnings.warn(
+        f"these settings cannot spread past the seed: {len(seeds)} contact(s) "
+        f"share {config.seed_energy} energy, so a hop-1 arrival is at most "
+        f"{ceiling:.2f} against a threshold of {config.threshold:.2f}. The "
+        "result will be first contact only - top-k with extra steps. Pass a "
+        "profile (precise / explore / compare), or lower threshold_ratio.",
+        UserWarning,
+        stacklevel=3,
     )
 
 
@@ -609,6 +657,13 @@ def retrieve_colored(
                 contact_votes[key] = contact_votes.get(key, 1) + (count - 1)
         if tau_here is not None:
             contact_taus[color] = tau_here
+
+    # Every colour injects the full seed energy and splits it among ITS own
+    # contacts, so the check runs per colour - `seeds` here is whatever the
+    # last iteration happened to leave behind, which is the wrong colour as
+    # often as not and stale entirely when a colour was skipped.
+    for color_seeds in seeds_by_color.values():
+        _check_propagation_can_spread(color_seeds, cfg.propagation)
 
     # One field for the whole query: exclusion is a property of the question,
     # not of any one colour, and it scales on the UNDIVIDED energy budget.
